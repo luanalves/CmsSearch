@@ -30,6 +30,7 @@ class ReasonTest extends TestCase
 
     public function testEmptyValueIsKept(): void
     {
+        $this->maxLengthIs('1000');
         $this->model->setValue('');
         $this->model->beforeSave();
         $this->assertSame('', $this->model->getValue());
@@ -93,5 +94,25 @@ class ReasonTest extends TestCase
         $this->model->setValue(str_repeat('a', 1001));
         $this->expectException(LocalizedException::class);
         $this->model->beforeSave();
+    }
+
+    /**
+     * @dataProvider nonPositiveLimits
+     */
+    public function testFallsBackTo1000WhenLimitIsNotPositive(string $limit): void
+    {
+        $this->maxLengthIs($limit);
+        $this->model->setValue(str_repeat('a', 1000));
+        $this->model->beforeSave();
+        $this->assertSame(1000, mb_strlen($this->model->getValue()));
+
+        $this->model->setValue(str_repeat('a', 1001));
+        $this->expectException(LocalizedException::class);
+        $this->model->beforeSave();
+    }
+
+    public static function nonPositiveLimits(): array
+    {
+        return ['zero' => ['0'], 'negative' => ['-5']];
     }
 }

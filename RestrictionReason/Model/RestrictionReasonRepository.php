@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Thedevkitchen\RestrictionReason\Model;
 
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Thedevkitchen\RestrictionReason\Api\Data\RestrictionReasonInterface;
@@ -25,6 +26,11 @@ class RestrictionReasonRepository implements RestrictionReasonRepositoryInterfac
      */
     public function getByWebsiteId(int $websiteId): RestrictionReasonInterface
     {
+        if ($websiteId <= 0) {
+            // Website id 0 is the admin pseudo-website, not a real storefront website.
+            throw new NoSuchEntityException(__('The website with id "%1" does not exist.', $websiteId));
+        }
+
         $scopeId = (int) $this->storeManager->getWebsite($websiteId)->getId();
         $scope = ScopeInterface::SCOPE_WEBSITE;
 

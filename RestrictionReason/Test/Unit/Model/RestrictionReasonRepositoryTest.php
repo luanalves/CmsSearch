@@ -90,4 +90,20 @@ class RestrictionReasonRepositoryTest extends TestCase
 
         $this->repository->getByWebsiteId(9999);
     }
+
+    /**
+     * @dataProvider nonPositiveIds
+     */
+    public function testNonPositiveWebsiteIdThrowsNoSuchEntityWithoutHittingTheStoreManager(int $id): void
+    {
+        $this->storeManager->expects($this->never())->method('getWebsite');
+        $this->expectException(NoSuchEntityException::class);
+
+        $this->repository->getByWebsiteId($id);
+    }
+
+    public static function nonPositiveIds(): array
+    {
+        return ['admin pseudo-website' => [0], 'negative' => [-1]];
+    }
 }
