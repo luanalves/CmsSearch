@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="general">
+            <group id="restriction">
+                <field id="reason" translate="label comment" type="textarea" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Restriction Reason</label>
+                    <comment>Free-text reason for restricting this website. Plain text only.</comment>
+                    <backend_model>Thedevkitchen\RestrictionReason\Model\Config\Backend\Reason</backend_model>
+                    <depends>
+                        <field id="is_active">1</field>
+                    </depends>
+                </field>
+                <field id="reason_max_length" translate="label comment" type="text" sortOrder="60"
+                       showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Restriction Reason Max Length</label>
+                    <comment>Maximum number of characters accepted in the Restriction Reason field.</comment>
+                    <validate>validate-digits validate-greater-than-zero</validate>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>
