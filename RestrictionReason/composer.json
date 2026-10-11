@@ -1,0 +1,14 @@
+{
+    "name": "thedevkitchen/module-restriction-reason",
+    "description": "Records the reason for Website Restrictions and exposes it read-only via REST",
+    "type": "magento2-module",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {
+            "Thedevkitchen\\RestrictionReason\\": ""
+        }
+    }
+}
