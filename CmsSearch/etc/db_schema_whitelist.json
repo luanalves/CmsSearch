@@ -37,5 +37,38 @@
             "FK_1E5D9C4CB6069094FF750BCFAC327201": true,
             "FK_F07512FE8B6F6F6491A76879E6C5CA22": true
         }
+    },
+    "thedevkitchen_cmssearch_classification_term": {
+        "column": {
+            "term_id": true,
+            "website_id": true,
+            "parent_id": true,
+            "code": true,
+            "path": true,
+            "level": true,
+            "sort_order": true,
+            "is_active": true
+        },
+        "index": {
+            "THEDEVKITCHEN_CMSSEARCH_CLASSIFICATION_TERM_PATH": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "THEDEVKITCHEN_CMSSEARCH_CLASSIFICATION_TERM_WEBSITE_ID_CODE": true,
+            "THEDEVKITCHEN_CMSSRCH_CLASSIFICATION_TERM_WS_ID_STORE_WS_WS_ID": true,
+            "FK_7E8B1BBA0A087EF1CF692F6C221ABC12": true
+        }
+    },
+    "thedevkitchen_cmssearch_classification_term_label": {
+        "column": {
+            "term_id": true,
+            "store_id": true,
+            "label": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "FK_50F152AA67E287F33CA6EB15DB21B5E1": true,
+            "FK_0733035D361502566E90D71958C8DA92": true
+        }
     }
 }

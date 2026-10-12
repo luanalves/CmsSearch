@@ -48,4 +48,47 @@
             <column name="type_id"/>
         </index>
     </table>
+
+    <table name="thedevkitchen_cmssearch_classification_term" resource="default" engine="innodb" comment="CMS Search classification term (tree per website)">
+        <column xsi:type="int" name="term_id" unsigned="true" nullable="false" identity="true" comment="Term ID"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website ID"/>
+        <column xsi:type="int" name="parent_id" unsigned="true" nullable="true" comment="Parent term (NULL = root)"/>
+        <column xsi:type="varchar" name="code" nullable="false" length="64" comment="Code, unique per website"/>
+        <column xsi:type="varchar" name="path" nullable="false" length="255" default="" comment="Ids from the root to the term, e.g. 1/4/9"/>
+        <column xsi:type="smallint" name="level" unsigned="true" nullable="false" default="0" comment="Depth, 0 = root"/>
+        <column xsi:type="int" name="sort_order" unsigned="true" nullable="false" default="0" comment="Order among siblings"/>
+        <column xsi:type="smallint" name="is_active" unsigned="true" nullable="false" default="1" comment="Is active"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="term_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="THEDEVKITCHEN_CMSSEARCH_TERM_WEBSITE_ID_CODE">
+            <column name="website_id"/>
+            <column name="code"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_TERM_WEBSITE_ID"
+                    table="thedevkitchen_cmssearch_classification_term" column="website_id"
+                    referenceTable="store_website" referenceColumn="website_id" onDelete="CASCADE"/>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_TERM_PARENT_ID"
+                    table="thedevkitchen_cmssearch_classification_term" column="parent_id"
+                    referenceTable="thedevkitchen_cmssearch_classification_term" referenceColumn="term_id" onDelete="NO ACTION"/>
+        <index referenceId="THEDEVKITCHEN_CMSSEARCH_TERM_PATH" indexType="btree">
+            <column name="path"/>
+        </index>
+    </table>
+
+    <table name="thedevkitchen_cmssearch_classification_term_label" resource="default" engine="innodb" comment="CMS Search classification term label per store view">
+        <column xsi:type="int" name="term_id" unsigned="true" nullable="false" comment="Term ID"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" comment="Store ID (0 = default label)"/>
+        <column xsi:type="varchar" name="label" nullable="false" length="255" comment="Label"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="term_id"/>
+            <column name="store_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_TERM_LABEL_TERM_ID"
+                    table="thedevkitchen_cmssearch_classification_term_label" column="term_id"
+                    referenceTable="thedevkitchen_cmssearch_classification_term" referenceColumn="term_id" onDelete="CASCADE"/>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_TERM_LABEL_STORE_ID"
+                    table="thedevkitchen_cmssearch_classification_term_label" column="store_id"
+                    referenceTable="store" referenceColumn="store_id" onDelete="CASCADE"/>
+    </table>
 </schema>
