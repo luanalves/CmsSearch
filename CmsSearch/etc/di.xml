@@ -13,6 +13,8 @@
                 type="Thedevkitchen\CmsSearch\Model\ClassificationTermRepository"/>
     <preference for="Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface"
                 type="Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults"/>
+    <preference for="Thedevkitchen\CmsSearch\Api\PageClassificationRepositoryInterface"
+                type="Thedevkitchen\CmsSearch\Model\PageClassificationRepository"/>
     <type name="Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\Grid\Collection">
         <arguments>
             <argument name="mainTable" xsi:type="string">thedevkitchen_cmssearch_content_type</argument>
