@@ -74,6 +74,11 @@
     </type>
     <preference for="Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface"
                 type="Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher"/>
+    <type name="Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
     <type name="Thedevkitchen\CmsSearch\Model\Queue\MessageSender">
         <arguments>
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>

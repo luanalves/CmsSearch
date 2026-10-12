@@ -13,6 +13,7 @@ use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Console\Command\ReindexCommand;
 use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
+use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
@@ -217,7 +218,7 @@ class DiPreferencesContractTest extends TestCase
             [ReindexPublisher::class],
             $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\ReindexPublisherInterface"]/@type'))
         );
-        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class] as $class) {
+        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class] as $class) {
             $this->assertSame(
                 [self::LOGGER],
                 $names($di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),
