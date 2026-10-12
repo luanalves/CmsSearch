@@ -13,8 +13,7 @@ class GenericButton
     public function __construct(
         private readonly Context $context,
         private readonly AuthorizationInterface $authorization
-    )
-    {
+    ) {
     }
 
     public function getTypeId(): ?int

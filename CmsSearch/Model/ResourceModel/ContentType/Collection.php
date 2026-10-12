@@ -6,8 +6,8 @@ namespace Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType;
 
 use Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeInterface;
-use Thedevkitchen\CmsSearch\Model\Db\Tables;
 use Thedevkitchen\CmsSearch\Model\ContentType;
+use Thedevkitchen\CmsSearch\Model\Db\Tables;
 use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType as ContentTypeResource;
 
 class Collection extends AbstractCollection

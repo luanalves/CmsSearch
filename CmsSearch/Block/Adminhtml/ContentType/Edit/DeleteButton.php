@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Block\Adminhtml\ContentType\Edit;
 
-use Thedevkitchen\CmsSearch\Controller\Adminhtml\ContentType\AbstractContentType;
 use Magento\Framework\View\Element\UiComponent\Control\ButtonProviderInterface;
+use Thedevkitchen\CmsSearch\Controller\Adminhtml\ContentType\AbstractContentType;
 
 class DeleteButton extends GenericButton implements ButtonProviderInterface
 {

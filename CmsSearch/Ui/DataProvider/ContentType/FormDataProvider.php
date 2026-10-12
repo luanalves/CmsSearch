@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Ui\DataProvider\ContentType;
 
-use Magento\Framework\App\Request\DataPersistorInterface;
 use Magento\Framework\Api\Filter;
+use Magento\Framework\App\Request\DataPersistorInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Ui\DataProvider\AbstractDataProvider;
