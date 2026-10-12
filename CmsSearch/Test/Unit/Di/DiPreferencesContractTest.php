@@ -15,7 +15,7 @@ use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
 
 /**
- * Static contract check of etc/di.xml and etc/adminhtml/di.xml (no DB, no ObjectManager).
+ * Static contract check of etc/di.xml and etc/adminhtml/di.xml, plus the DI side of etc/events.xml (no DB, no ObjectManager).
  */
 class DiPreferencesContractTest extends TestCase
 {
@@ -145,5 +145,29 @@ class DiPreferencesContractTest extends TestCase
         $this->assertTrue(is_a(SearchFieldset::class, ModifierInterface::class, true));
         $plugin = $di->xpath('//type[@name="Magento\\Cms\\Model\\Page\\DataProvider"]/plugin/@type');
         $this->assertSame(PageFormDataPlugin::class, ltrim((string) $plugin[0], '\\'));
+    }
+
+    /**
+     * Observers get no <arguments> in di.xml: every constructor parameter must be autowirable (an existing class or
+     * interface, or optional), otherwise the page save itself fails at runtime.
+     */
+    public function testEveryEventObserverIsAutowirable(): void
+    {
+        $path = dirname(__DIR__, 3) . '/etc/events.xml';
+        $this->assertFileExists($path, 'etc/events.xml must exist');
+        $observers = simplexml_load_file($path)->xpath('//observer/@instance');
+        $this->assertNotEmpty($observers);
+        foreach ($observers as $instance) {
+            $class = ltrim((string) $instance, '\\');
+            $this->assertTrue(class_exists($class), "observer class not found: $class");
+            foreach ((new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [] as $param) {
+                $type = $param->getType();
+                $name = $type instanceof \ReflectionNamedType ? $type->getName() : '';
+                $this->assertTrue(
+                    $param->isOptional() || $this->exists($name),
+                    "$class: constructor parameter \$" . $param->getName() . " ($name) cannot be injected"
+                );
+            }
+        }
     }
 }

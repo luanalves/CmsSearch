@@ -76,14 +76,19 @@ class ClassificationTermOptionsTest extends TestCase
         $this->assertSame(['value' => 6, 'label' => 'Agro / Soja (inactive)'], end($options));
     }
 
-    public function testACurrentTermOfAnotherWebsiteIsKeptAndMarked(): void
+    public function testACurrentTermOfAnotherWebsiteIsKeptAndNamesItsWebsite(): void
     {
         $repository = $this->createMock(ClassificationTermRepositoryInterface::class);
         $repository->method('getById')->with(7)->willReturn(
             ClassificationTermBuilder::build(fn (string $c) => $this->createMock($c), 7, 3, 'c7', null, [0 => 'Fitness'])
         );
         $options = $this->options($repository)->forWebsites([2], 7);
-        $this->assertSame(['value' => 7, 'label' => 'Fitness (other website)'], end($options));
+        $this->assertSame(['value' => 7, 'label' => 'Website 2 / Fitness (other website)'], end($options));
+        $this->assertSame(
+            ['value' => 7, 'label' => 'Website 2 / Fitness (other website)'],
+            ($options = $this->options($repository)->forWebsites([2, 99], 7)) ? end($options) : null,
+            'the website name is shown once, also when the offered list is prefixed'
+        );
     }
 
     public function testAnOfferedOrDeletedCurrentTermAddsNothing(): void

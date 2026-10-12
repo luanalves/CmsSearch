@@ -13,6 +13,7 @@ use Magento\Store\Api\Data\WebsiteInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\PageClassificationRepositoryInterface;
 use Thedevkitchen\CmsSearch\Model\PageClassification;
 use Thedevkitchen\CmsSearch\Model\PageClassification\FormFields;
@@ -27,6 +28,7 @@ class SearchFieldsetTest extends TestCase
     private PageClassificationRepositoryInterface&MockObject $links;
     private PageContentTypeOptions&MockObject $typeOptions;
     private ClassificationTermOptions&MockObject $termOptions;
+    private LoggerInterface&MockObject $logger;
 
     private function modifier(string $pageIdParam): SearchFieldset
     {
@@ -36,6 +38,7 @@ class SearchFieldsetTest extends TestCase
         $this->links = $this->createMock(PageClassificationRepositoryInterface::class);
         $this->typeOptions = $this->createMock(PageContentTypeOptions::class);
         $this->termOptions = $this->createMock(ClassificationTermOptions::class);
+        $this->logger = $this->createMock(LoggerInterface::class);
 
         $websites = [];
         foreach ([2, 3] as $id) {
@@ -60,7 +63,8 @@ class SearchFieldsetTest extends TestCase
             $this->links,
             new PageWebsites($storeManager),
             $this->typeOptions,
-            $this->termOptions
+            $this->termOptions,
+            $this->logger
         );
     }
 
@@ -139,5 +143,32 @@ class SearchFieldsetTest extends TestCase
     {
         $data = [7 => ['title' => 'Home']];
         $this->assertSame($data, $this->modifier('7')->modifyData($data));
+    }
+
+    /**
+     * The fieldset is an add-on: if its options or the current link cannot be loaded, the native Page form still
+     * opens, without the fieldset (so a save cannot post an empty pair over a link that could not be shown).
+     */
+    public function testAFailureWhileBuildingTheFieldsetLeavesTheNativeFormIntact(): void
+    {
+        foreach (['options', 'link', 'page'] as $failing) {
+            $modifier = $this->modifier('7');
+            $failure = new \RuntimeException("SQLSTATE[HY000]: $failing");
+            $this->pages->method('getById')->willReturnCallback(
+                fn () => $failing === 'page' ? throw $failure : $this->page([2])
+            );
+            $this->links->method('getByPageId')->willReturnCallback(
+                fn () => $failing === 'link' ? throw $failure : new PageClassification(7, 3, 10)
+            );
+            $this->typeOptions->method('toOptionArrayWithCurrent')->willReturn([]);
+            $this->termOptions->method('forWebsites')->willReturnCallback(
+                fn () => $failing === 'options' ? throw $failure : []
+            );
+            $this->logger->expects($this->once())->method('error')
+                ->with($this->anything(), $this->callback(fn (array $context): bool => ($context['exception'] ?? null) === $failure));
+
+            $meta = ['general' => ['keep' => true]];
+            $this->assertSame($meta, $modifier->modifyMeta($meta), "failure in $failing");
+        }
     }
 }

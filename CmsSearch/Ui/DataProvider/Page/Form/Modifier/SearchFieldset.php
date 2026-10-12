@@ -8,6 +8,7 @@ use Magento\Cms\Api\PageRepositoryInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Ui\DataProvider\Modifier\ModifierInterface;
+use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\Data\PageClassificationInterface;
 use Thedevkitchen\CmsSearch\Api\PageClassificationRepositoryInterface;
 use Thedevkitchen\CmsSearch\Model\PageClassification\FormFields;
@@ -27,7 +28,8 @@ class SearchFieldset implements ModifierInterface
         private readonly PageClassificationRepositoryInterface $classifications,
         private readonly PageWebsites $pageWebsites,
         private readonly PageContentTypeOptions $typeOptions,
-        private readonly ClassificationTermOptions $termOptions
+        private readonly ClassificationTermOptions $termOptions,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -46,6 +48,21 @@ class SearchFieldset implements ModifierInterface
      */
     public function modifyMeta(array $meta): array
     {
+        try {
+            $meta[FormFields::FIELDSET] = $this->fieldset();
+        } catch (\Throwable $exception) {
+            // Non-essential add-on: the native Page form opens without the fieldset (and so cannot post an empty
+            // pair over a link it could not show).
+            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+        }
+        return $meta;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fieldset(): array
+    {
         $pageId = $this->pageId();
         $storeIds = [];
         $current = null;
@@ -60,7 +77,7 @@ class SearchFieldset implements ModifierInterface
         // A new Page (or one without store views yet) can still go to any website: offer the terms of all of them.
         $websiteIds = $this->pageWebsites->fromStoreIds($storeIds ?: [0]);
 
-        $meta[FormFields::FIELDSET] = [
+        return [
             'arguments' => ['data' => ['config' => [
                 'componentType' => 'fieldset',
                 'label' => __('Search'),
@@ -94,7 +111,6 @@ class SearchFieldset implements ModifierInterface
                 ]]]],
             ],
         ];
-        return $meta;
     }
 
     /**

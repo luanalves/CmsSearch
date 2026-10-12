@@ -57,10 +57,12 @@ class ClassificationTermOptions
                 break;
             }
         }
-        $label = $this->label($trail, $prefixed ? ($names[$term->getWebsiteId()] ?? '') : '');
+        $ownWebsite = in_array($term->getWebsiteId(), $websiteIds, true);
+        // A term of another website always names its website, also when the offered terms are not prefixed.
+        $label = $this->label($trail, $prefixed || !$ownWebsite ? ($names[$term->getWebsiteId()] ?? '') : '');
         $options[] = [
             'value' => $currentTermId,
-            'label' => in_array($term->getWebsiteId(), $websiteIds, true)
+            'label' => $ownWebsite
                 ? (string) __('%1 (inactive)', $label)
                 : (string) __('%1 (other website)', $label),
         ];

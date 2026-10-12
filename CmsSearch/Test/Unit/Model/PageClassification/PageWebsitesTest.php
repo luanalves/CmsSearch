@@ -62,4 +62,16 @@ class PageWebsitesTest extends TestCase
         $this->assertSame([0], $this->pageWebsites()->storeIdsOf($page));
         $this->assertSame([], $this->pageWebsites()->storeIdsOf($this->createMock(PageInterface::class)));
     }
+
+    public function testStoreIdsOfFollowWhatThePageSaveWrites(): void
+    {
+        // Magento\Cms\Model\ResourceModel\Page\Relation\Store\SaveHandler: getStores(), and store_id when that is empty.
+        $page = $this->getMockBuilder(Page::class)->disableOriginalConstructor()->onlyMethods([])->getMock();
+        $page->setData(['stores' => [], 'store_id' => ['5']]);
+        $this->assertSame([5], $this->pageWebsites()->storeIdsOf($page));
+        $page->setData(['store_id' => '3']);
+        $this->assertSame([3], $this->pageWebsites()->storeIdsOf($page));
+        $page->setData(['title' => 'no store views']);
+        $this->assertSame([], $this->pageWebsites()->storeIdsOf($page));
+    }
 }

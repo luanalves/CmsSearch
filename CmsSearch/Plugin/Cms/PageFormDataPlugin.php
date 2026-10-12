@@ -7,6 +7,7 @@ namespace Thedevkitchen\CmsSearch\Plugin\Cms;
 use Magento\Cms\Model\Page\DataProvider as PageDataProvider;
 use Magento\CmsStaging\Model\Page\DataProvider as StagingPageDataProvider;
 use Magento\Framework\Exception\NoSuchEntityException;
+use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\PageClassificationRepositoryInterface;
 use Thedevkitchen\CmsSearch\Model\PageClassification\FormFields;
 
@@ -17,8 +18,10 @@ use Thedevkitchen\CmsSearch\Model\PageClassification\FormFields;
  */
 class PageFormDataPlugin
 {
-    public function __construct(private readonly PageClassificationRepositoryInterface $classifications)
-    {
+    public function __construct(
+        private readonly PageClassificationRepositoryInterface $classifications,
+        private readonly LoggerInterface $logger
+    ) {
     }
 
     /**
@@ -36,6 +39,7 @@ class PageFormDataPlugin
             }
             $typeId = '';
             $termId = '';
+            $unreadable = false;
             $pageId = (int) ($row['page_id'] ?? 0);
             if ($pageId > 0) {
                 try {
@@ -44,10 +48,18 @@ class PageFormDataPlugin
                     $termId = (string) $link->getTermId();
                 } catch (NoSuchEntityException) {
                     // the Page is not classified yet
+                } catch (\Throwable $exception) {
+                    // Non-essential add-on: never break the native Page form. Marker "0" makes the save ignore
+                    // the fieldset, so a link that could not be shown cannot be cleared by saving (SubmittedValues).
+                    $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+                    $unreadable = true;
                 }
             }
             $result[$key][FormFields::TYPE] = $typeId;
             $result[$key][FormFields::TERM] = $termId;
+            if ($unreadable) {
+                $result[$key][FormFields::MARKER] = '0';
+            }
         }
         return $result;
     }

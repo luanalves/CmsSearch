@@ -42,7 +42,8 @@ class PageWebsites
     }
 
     /**
-     * Store views of a Page model as posted by the form or loaded from the database.
+     * Store views of a Page model as posted by the form or loaded from the database: exactly the ones the page save
+     * writes (Magento\Cms\Model\ResourceModel\Page\Relation\Store\SaveHandler: getStores(), else store_id).
      *
      * @return int[]
      */
@@ -51,6 +52,10 @@ class PageWebsites
         if (!$page instanceof Page) {
             return [];
         }
-        return array_values(array_map('intval', (array) $page->getStores()));
+        $storeIds = (array) $page->getStores();
+        if ($storeIds === []) {
+            $storeIds = (array) $page->getData('store_id');
+        }
+        return array_values(array_map('intval', $storeIds));
     }
 }
