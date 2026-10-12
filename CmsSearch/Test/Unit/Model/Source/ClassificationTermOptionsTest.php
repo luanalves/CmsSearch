@@ -83,11 +83,13 @@ class ClassificationTermOptionsTest extends TestCase
             ClassificationTermBuilder::build(fn (string $c) => $this->createMock($c), 7, 3, 'c7', null, [0 => 'Fitness'])
         );
         $options = $this->options($repository)->forWebsites([2], 7);
+        // website id 2 = "Website 1", 3 = "Website 2" in options() (mirrors this install: id 1 is the Main Website)
         $this->assertSame(['value' => 7, 'label' => 'Website 2 / Fitness (other website)'], end($options));
+        $options = $this->options($repository)->forWebsites([2, 99], 7);
         $this->assertSame(
             ['value' => 7, 'label' => 'Website 2 / Fitness (other website)'],
-            ($options = $this->options($repository)->forWebsites([2, 99], 7)) ? end($options) : null,
-            'the website name is shown once, also when the offered list is prefixed'
+            end($options),
+            'with several offered websites (prefixed list) the term still names its own website exactly once'
         );
     }
 

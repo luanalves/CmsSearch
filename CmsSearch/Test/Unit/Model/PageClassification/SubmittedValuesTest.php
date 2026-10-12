@@ -47,6 +47,12 @@ class SubmittedValuesTest extends TestCase
         $this->assertNull($this->read([FormFields::MARKER => '0', FormFields::TYPE => '', FormFields::TERM => '']));
     }
 
+    public function testMarkerZeroIgnoresEvenNonEmptyValues(): void
+    {
+        $this->assertNull($this->read([FormFields::MARKER => '0', FormFields::TYPE => '3', FormFields::TERM => '10']));
+        $this->assertNull($this->read([FormFields::MARKER => 0, FormFields::TYPE => '3', FormFields::TERM => '10']));
+    }
+
     public function testMalformedIdsAreRejected(): void
     {
         $this->expectException(InputException::class);
