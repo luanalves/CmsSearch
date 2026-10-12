@@ -10,6 +10,7 @@ use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
 use Thedevkitchen\CmsSearch\Model\PageClassification;
 use Thedevkitchen\CmsSearch\Model\PageClassification\AssignmentValidator;
 use Thedevkitchen\CmsSearch\Model\PageClassificationRepository;
@@ -20,6 +21,7 @@ class PageClassificationRepositoryTest extends TestCase
     private LinkResource&MockObject $resource;
     private AssignmentValidator&MockObject $validator;
     private LoggerInterface&MockObject $logger;
+    private ReindexPublisherInterface&MockObject $publisher;
     private PageClassificationRepository $repository;
 
     protected function setUp(): void
@@ -27,7 +29,8 @@ class PageClassificationRepositoryTest extends TestCase
         $this->resource = $this->createMock(LinkResource::class);
         $this->validator = $this->createMock(AssignmentValidator::class);
         $this->logger = $this->createMock(LoggerInterface::class);
-        $this->repository = new PageClassificationRepository($this->resource, $this->validator, $this->logger);
+        $this->publisher = $this->createMock(ReindexPublisherInterface::class);
+        $this->repository = new PageClassificationRepository($this->resource, $this->validator, $this->logger, $this->publisher);
     }
 
     public function testGetByPageId(): void
@@ -100,6 +103,52 @@ class PageClassificationRepositoryTest extends TestCase
     {
         $this->validator->expects($this->never())->method('validate');
         $this->resource->expects($this->once())->method('remove')->with(7);
+        $this->repository->unassign(7);
+    }
+
+    public function testAssignPublishesThePageAfterTheWrite(): void
+    {
+        $calls = [];
+        $this->resource->method('fetchRow')->willReturn(null);
+        $this->resource->method('replace')->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'replace';
+        });
+        $this->publisher->expects($this->once())->method('publish')->with('page', 7, 'save')
+            ->willReturnCallback(function () use (&$calls): void {
+                $calls[] = 'publish';
+            });
+        $this->repository->assign(7, 3, 10, [2]);
+        $this->assertSame(['replace', 'publish'], $calls);
+    }
+
+    public function testClearingPublishesThePage(): void
+    {
+        $this->resource->method('fetchRow')->willReturn(['type_id' => 3, 'term_id' => 10]);
+        $this->resource->expects($this->once())->method('remove')->with(7);
+        $this->publisher->expects($this->once())->method('publish')->with('page', 7, 'save');
+        $this->repository->assign(7, null, null, [2]);
+    }
+
+    public function testAnInvalidAssignmentPublishesNothing(): void
+    {
+        $this->validator->method('validate')->willThrowException(new InputException(__('Select both')));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(InputException::class);
+        $this->repository->assign(7, 3, null, [2]);
+    }
+
+    public function testADatabaseErrorPublishesNothing(): void
+    {
+        $this->resource->method('replace')->willThrowException(new \RuntimeException('SQLSTATE[23000] secret'));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(CouldNotSaveException::class);
+        $this->repository->assign(7, 3, 10, [2]);
+    }
+
+    public function testUnassignPublishesThePage(): void
+    {
+        $this->resource->expects($this->once())->method('remove')->with(7);
+        $this->publisher->expects($this->once())->method('publish')->with('page', 7, 'save');
         $this->repository->unassign(7);
     }
 }

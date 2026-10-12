@@ -9,19 +9,23 @@ use Magento\Framework\Exception\InputException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\Data\PageClassificationInterface;
+use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Api\PageClassificationRepositoryInterface;
+use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
 use Thedevkitchen\CmsSearch\Model\PageClassification\AssignmentValidator;
 use Thedevkitchen\CmsSearch\Model\ResourceModel\PageClassification as LinkResource;
 
 /**
- * Single write path of the Page link (Plan 3 hooks its reindex message here).
+ * Single write path of the Page link. Every successful write asks for a page reindex; inside the page save
+ * transaction that request is merged with the page save hook's (one message per save).
  */
 class PageClassificationRepository implements PageClassificationRepositoryInterface
 {
     public function __construct(
         private readonly LinkResource $resource,
         private readonly AssignmentValidator $validator,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly ReindexPublisherInterface $reindexPublisher
     ) {
     }
 
@@ -46,13 +50,14 @@ class PageClassificationRepository implements PageClassificationRepositoryInterf
         try {
             if ($typeId === null || $termId === null) { // the validator guarantees both are null here
                 $this->resource->remove($pageId);
-                return;
+            } else {
+                $this->resource->replace($pageId, $typeId, $termId);
             }
-            $this->resource->replace($pageId, $typeId, $termId);
         } catch (\Throwable $exception) {
             $this->logger->error($exception->getMessage(), ['exception' => $exception]);
             throw new CouldNotSaveException(__('Could not save the search classification of the page.'), $exception);
         }
+        $this->reindexPublisher->publish(ReindexMessageInterface::ENTITY_PAGE, $pageId, ReindexMessageInterface::ACTION_SAVE);
     }
 
     public function unassign(int $pageId): void
@@ -63,5 +68,6 @@ class PageClassificationRepository implements PageClassificationRepositoryInterf
             $this->logger->error($exception->getMessage(), ['exception' => $exception]);
             throw new CouldNotSaveException(__('Could not save the search classification of the page.'), $exception);
         }
+        $this->reindexPublisher->publish(ReindexMessageInterface::ENTITY_PAGE, $pageId, ReindexMessageInterface::ACTION_SAVE);
     }
 }

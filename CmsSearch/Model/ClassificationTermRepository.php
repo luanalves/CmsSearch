@@ -19,6 +19,8 @@ use Thedevkitchen\CmsSearch\Api\ClassificationTermRepositoryInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermInterface as Term;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterfaceFactory;
+use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
+use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
 use Thedevkitchen\CmsSearch\Model\Classification\DeleteGuard;
 use Thedevkitchen\CmsSearch\Model\Classification\PathManager;
 use Thedevkitchen\CmsSearch\Model\Classification\TreeBuilder;
@@ -44,7 +46,8 @@ class ClassificationTermRepository implements ClassificationTermRepositoryInterf
         private readonly DeleteGuard $deleteGuard,
         private readonly TreeBuilder $treeBuilder,
         private readonly StoreManagerInterface $storeManager,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly ReindexPublisherInterface $reindexPublisher
     ) {
     }
 
@@ -79,6 +82,15 @@ class ClassificationTermRepository implements ClassificationTermRepositoryInterf
                 $term->setData(Term::PATH, $placed['path']);
                 $term->setData(Term::LEVEL, $placed['level']);
             }
+            // Held until this COMMIT (dropped on ROLLBACK) by the publisher. One message also for a move: the
+            // consumer reindexes the pages of the term's CURRENT subtree, so descendants need no message.
+            $this->reindexPublisher->publish(
+                ReindexMessageInterface::ENTITY_CLASSIFICATION_TERM,
+                (int) $term->getTermId(),
+                ReindexMessageInterface::ACTION_SAVE,
+                null,
+                $term->getWebsiteId()
+            );
             $connection->commit();
         } catch (LocalizedException $exception) {
             $connection->rollBack();
@@ -140,12 +152,21 @@ class ClassificationTermRepository implements ClassificationTermRepositoryInterf
     {
         // Rule lives here so the admin, the fixtures and any future caller are covered.
         $this->deleteGuard->assertDeletable($term);
+        $termId = (int) $term->getTermId();
+        $websiteId = $term->getWebsiteId();
         try {
             $this->resource->delete($term);
         } catch (\Throwable $exception) {
             $this->logger->error($exception->getMessage(), ['exception' => $exception]);
             throw new CouldNotDeleteException(__('Could not delete the classification term.'), $exception);
         }
+        $this->reindexPublisher->publish(
+            ReindexMessageInterface::ENTITY_CLASSIFICATION_TERM,
+            $termId,
+            ReindexMessageInterface::ACTION_DELETE,
+            null,
+            $websiteId
+        );
         return true;
     }
 

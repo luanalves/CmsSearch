@@ -15,6 +15,8 @@ use Thedevkitchen\CmsSearch\Api\ContentTypeRepositoryInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterfaceFactory;
+use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
+use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
 use Thedevkitchen\CmsSearch\Model\ContentType\DeleteGuard;
 use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType as ContentTypeResource;
 use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\CollectionFactory;
@@ -31,7 +33,8 @@ class ContentTypeRepository implements ContentTypeRepositoryInterface
         private readonly CollectionFactory $collectionFactory,
         private readonly CollectionProcessorInterface $collectionProcessor,
         private readonly ContentTypeSearchResultsInterfaceFactory $searchResultsFactory,
-        private readonly DeleteGuard $deleteGuard
+        private readonly DeleteGuard $deleteGuard,
+        private readonly ReindexPublisherInterface $reindexPublisher
     ) {
     }
 
@@ -47,6 +50,15 @@ class ContentTypeRepository implements ContentTypeRepositoryInterface
             throw $exception;
         } catch (\Exception $exception) {
             throw new CouldNotSaveException(__('Could not save the content type: %1', $exception->getMessage()), $exception);
+        }
+        $typeId = $type->getTypeId();
+        if ($typeId !== null) {
+            // Label, tab order and active flag change what every page of the type shows: the consumer expands it.
+            $this->reindexPublisher->publish(
+                ReindexMessageInterface::ENTITY_CONTENT_TYPE,
+                $typeId,
+                ReindexMessageInterface::ACTION_SAVE
+            );
         }
         return $type;
     }
@@ -103,10 +115,18 @@ class ContentTypeRepository implements ContentTypeRepositoryInterface
     {
         // Rule lives here so controller, mass action and any other caller are covered.
         $this->deleteGuard->assertDeletable($type);
+        $typeId = $type->getTypeId();
         try {
             $this->resource->delete($type);
         } catch (\Exception $exception) {
             throw new CouldNotDeleteException(__('Could not delete the content type: %1', $exception->getMessage()), $exception);
+        }
+        if ($typeId !== null) {
+            $this->reindexPublisher->publish(
+                ReindexMessageInterface::ENTITY_CONTENT_TYPE,
+                $typeId,
+                ReindexMessageInterface::ACTION_DELETE
+            );
         }
         return true;
     }

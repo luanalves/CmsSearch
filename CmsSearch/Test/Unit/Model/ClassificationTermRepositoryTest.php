@@ -18,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterfaceFactory;
+use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
 use Thedevkitchen\CmsSearch\Exception\ClassificationTermInUseException;
 use Thedevkitchen\CmsSearch\Model\Classification\DeleteGuard;
 use Thedevkitchen\CmsSearch\Model\Classification\PathManager;
@@ -36,6 +37,7 @@ class ClassificationTermRepositoryTest extends TestCase
     private PathManager&MockObject $pathManager;
     private DeleteGuard&MockObject $deleteGuard;
     private LoggerInterface&MockObject $logger;
+    private ReindexPublisherInterface&MockObject $publisher;
     private ClassificationTermRepository $repository;
     /** @var array<int, array<string, mixed>> stored states by term id */
     private array $stored = [];
@@ -49,6 +51,7 @@ class ClassificationTermRepositoryTest extends TestCase
         $this->pathManager = $this->createMock(PathManager::class);
         $this->deleteGuard = $this->createMock(DeleteGuard::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->publisher = $this->createMock(ReindexPublisherInterface::class);
 
         // Websites 2 and 3; store views 2 (website 2) and 5, 6 (website 3).
         $websites = [];
@@ -78,7 +81,8 @@ class ClassificationTermRepositoryTest extends TestCase
             $this->deleteGuard,
             new TreeBuilder($this->resource),
             $storeManager,
-            $this->logger
+            $this->logger,
+            $this->publisher
         );
     }
 
@@ -294,5 +298,68 @@ class ClassificationTermRepositoryTest extends TestCase
         $this->deleteGuard->expects($this->once())->method('assertDeletable')->with($term);
         $this->resource->expects($this->once())->method('delete')->with($term);
         $this->assertTrue($this->repository->delete($term));
+    }
+
+    public function testASavePublishesOneMessageInsideTheTransactionBeforeTheCommit(): void
+    {
+        $calls = [];
+        $this->connection->method('beginTransaction')->willReturnCallback(function () use (&$calls) {
+            $calls[] = 'begin';
+            return $this->connection;
+        });
+        $this->connection->method('commit')->willReturnCallback(function () use (&$calls) {
+            $calls[] = 'commit';
+            return $this->connection;
+        });
+        $this->resource->method('save')->willReturnCallback(function (ClassificationTerm $saved) use (&$calls) {
+            $calls[] = 'save';
+            $saved->setTermId(15);
+            return $this->resource;
+        });
+        $this->pathManager->method('relocate')->willReturn(['path' => '15', 'level' => 0]);
+        $this->publisher->expects($this->once())->method('publish')->with('classification_term', 15, 'save', null, 2)
+            ->willReturnCallback(function () use (&$calls): void {
+                $calls[] = 'publish';
+            });
+        $this->repository->save($this->term(null));
+        $this->assertSame(['begin', 'save', 'publish', 'commit'], $calls);
+    }
+
+    public function testAMoveOfASubtreePublishesOneMessageForTheMovedTermOnly(): void
+    {
+        $this->store(4, 2, 'agro', 1, '1/4', 1);
+        $this->store(7, 2, 'tv', null, '7', 0);
+        $this->resource->method('save')->willReturnSelf();
+        $this->pathManager->method('relocate')->willReturn(['path' => '7/4', 'level' => 1]);
+        $this->publisher->expects($this->once())->method('publish')->with('classification_term', 4, 'save', null, 2);
+        $this->repository->save($this->term(4, 2, 'agro', 7));
+    }
+
+    public function testARejectedMovePublishesNothing(): void
+    {
+        $this->store(4, 2, 'agro', 1, '1/4', 1);
+        $this->store(7, 2, 'tv', null, '7', 0);
+        $this->resource->method('save')->willReturnSelf();
+        $this->pathManager->method('relocate')->willThrowException(new InputException(__('too deep')));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(InputException::class);
+        $this->repository->save($this->term(4, 2, 'agro', 7));
+    }
+
+    public function testDeletePublishesTheTermAndItsWebsite(): void
+    {
+        $term = $this->term(4);
+        $this->resource->expects($this->once())->method('delete')->with($term);
+        $this->publisher->expects($this->once())->method('publish')->with('classification_term', 4, 'delete', null, 2);
+        $this->repository->delete($term);
+    }
+
+    public function testABlockedDeletePublishesNothing(): void
+    {
+        $term = $this->term(4);
+        $this->deleteGuard->method('assertDeletable')->willThrowException(new ClassificationTermInUseException(__('in use')));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(ClassificationTermInUseException::class);
+        $this->repository->delete($term);
     }
 }

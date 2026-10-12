@@ -15,6 +15,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterfaceFactory;
+use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
 use Thedevkitchen\CmsSearch\Exception\ContentTypeInUseException;
 use Thedevkitchen\CmsSearch\Model\ContentType;
 use Thedevkitchen\CmsSearch\Model\ContentType\DeleteGuard;
@@ -30,6 +31,7 @@ class ContentTypeRepositoryTest extends TestCase
     private ContentTypeResource&MockObject $resource;
     private ContentTypeFactory&MockObject $factory;
     private DeleteGuard&MockObject $deleteGuard;
+    private ReindexPublisherInterface&MockObject $publisher;
     private CollectionFactory&MockObject $collectionFactory;
     private CollectionProcessorInterface&MockObject $collectionProcessor;
     private ContentTypeSearchResultsInterfaceFactory&MockObject $searchResultsFactory;
@@ -43,13 +45,15 @@ class ContentTypeRepositoryTest extends TestCase
         $this->collectionFactory = $this->createMock(CollectionFactory::class);
         $this->collectionProcessor = $this->createMock(CollectionProcessorInterface::class);
         $this->searchResultsFactory = $this->createMock(ContentTypeSearchResultsInterfaceFactory::class);
+        $this->publisher = $this->createMock(ReindexPublisherInterface::class);
         $this->repository = new ContentTypeRepository(
             $this->resource,
             $this->factory,
             $this->collectionFactory,
             $this->collectionProcessor,
             $this->searchResultsFactory,
-            $this->deleteGuard
+            $this->deleteGuard,
+            $this->publisher
         );
     }
 
@@ -237,5 +241,56 @@ class ContentTypeRepositoryTest extends TestCase
         $this->resource->expects($this->once())->method('save')->with($type);
 
         $this->repository->save($type);
+    }
+
+    public function testSavePublishesTheStoredTypeAfterTheWrite(): void
+    {
+        $type = $this->type(null, 'news');
+        $calls = [];
+        $this->resource->method('codeExists')->willReturn(false);
+        $this->resource->method('save')->willReturnCallback(function (ContentType $saved) use (&$calls) {
+            $calls[] = 'save';
+            $saved->setTypeId(12);
+            return $this->resource;
+        });
+        $this->publisher->expects($this->once())->method('publish')->with('content_type', 12, 'save')
+            ->willReturnCallback(function () use (&$calls): void {
+                $calls[] = 'publish';
+            });
+        $this->repository->save($type);
+        $this->assertSame(['save', 'publish'], $calls);
+    }
+
+    public function testAnInvalidTypePublishesNothing(): void
+    {
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(InputException::class);
+        $this->repository->save($this->type(null, 'Not Valid!'));
+    }
+
+    public function testAFailedWritePublishesNothing(): void
+    {
+        $this->resource->method('codeExists')->willReturn(false);
+        $this->resource->method('save')->willThrowException(new \RuntimeException('db'));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(CouldNotSaveException::class);
+        $this->repository->save($this->type(null, 'news'));
+    }
+
+    public function testDeletePublishesTheDeletedTypeId(): void
+    {
+        $type = $this->type(7, 'tv');
+        $this->resource->expects($this->once())->method('delete')->with($type);
+        $this->publisher->expects($this->once())->method('publish')->with('content_type', 7, 'delete');
+        $this->repository->delete($type);
+    }
+
+    public function testABlockedDeletePublishesNothing(): void
+    {
+        $type = $this->type(7, 'tv');
+        $this->deleteGuard->method('assertDeletable')->willThrowException(new ContentTypeInUseException(__('in use')));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(ContentTypeInUseException::class);
+        $this->repository->delete($type);
     }
 }
