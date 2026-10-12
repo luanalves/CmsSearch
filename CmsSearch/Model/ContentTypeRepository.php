@@ -1,0 +1,145 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Thedevkitchen\CmsSearch\Model;
+
+use Magento\Framework\Api\SearchCriteria\CollectionProcessorInterface;
+use Magento\Framework\Api\SearchCriteriaInterface;
+use Magento\Framework\Exception\AlreadyExistsException;
+use Magento\Framework\Exception\CouldNotDeleteException;
+use Magento\Framework\Exception\CouldNotSaveException;
+use Magento\Framework\Exception\InputException;
+use Magento\Framework\Exception\NoSuchEntityException;
+use Thedevkitchen\CmsSearch\Api\ContentTypeRepositoryInterface;
+use Thedevkitchen\CmsSearch\Api\Data\ContentTypeInterface;
+use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
+use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterfaceFactory;
+use Thedevkitchen\CmsSearch\Model\ContentType\DeleteGuard;
+use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType as ContentTypeResource;
+use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\CollectionFactory;
+
+class ContentTypeRepository implements ContentTypeRepositoryInterface
+{
+    private const CODE_PATTERN = '/^[a-z0-9_]{1,64}$/';
+
+    public function __construct(
+        private readonly ContentTypeResource $resource,
+        private readonly ContentTypeFactory $factory,
+        private readonly CollectionFactory $collectionFactory,
+        private readonly CollectionProcessorInterface $collectionProcessor,
+        private readonly ContentTypeSearchResultsInterfaceFactory $searchResultsFactory,
+        private readonly DeleteGuard $deleteGuard
+    ) {
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function save(ContentTypeInterface $type): ContentTypeInterface
+    {
+        $this->validate($type);
+        try {
+            $this->resource->save($type);
+        } catch (\Exception $exception) {
+            throw new CouldNotSaveException(__('Could not save the content type: %1', $exception->getMessage()), $exception);
+        }
+        return $type;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getById(int $typeId): ContentTypeInterface
+    {
+        $type = $this->factory->create();
+        $this->resource->load($type, $typeId);
+        if (!$type->getId()) {
+            throw new NoSuchEntityException(__('The content type with id "%1" does not exist.', $typeId));
+        }
+        return $type;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getByCode(string $code): ContentTypeInterface
+    {
+        $type = $this->factory->create();
+        $this->resource->load($type, $code, ContentTypeInterface::CODE);
+        if (!$type->getId()) {
+            throw new NoSuchEntityException(__('The content type with code "%1" does not exist.', $code));
+        }
+        return $type;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getList(SearchCriteriaInterface $searchCriteria): ContentTypeSearchResultsInterface
+    {
+        $collection = $this->collectionFactory->create();
+        $this->collectionProcessor->process($searchCriteria, $collection);
+
+        $items = [];
+        foreach ($collection->getAllIds() as $typeId) {
+            $items[] = $this->getById((int) $typeId);
+        }
+
+        $results = $this->searchResultsFactory->create();
+        $results->setSearchCriteria($searchCriteria);
+        $results->setItems($items);
+        $results->setTotalCount($collection->getSize());
+        return $results;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function delete(ContentTypeInterface $type): bool
+    {
+        // Rule lives here so controller, mass action and any other caller are covered.
+        $this->deleteGuard->assertDeletable($type);
+        try {
+            $this->resource->delete($type);
+        } catch (\Exception $exception) {
+            throw new CouldNotDeleteException(__('Could not delete the content type: %1', $exception->getMessage()), $exception);
+        }
+        return true;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function deleteById(int $typeId): bool
+    {
+        return $this->delete($this->getById($typeId));
+    }
+
+    private function validate(ContentTypeInterface $type): void
+    {
+        $code = $type->getCode();
+        if (preg_match(self::CODE_PATTERN, $code) !== 1) {
+            throw new InputException(
+                __('The content type code must have 1-64 characters: lowercase letters, digits and underscore.')
+            );
+        }
+
+        $typeId = $type->getTypeId();
+        if ($typeId !== null) {
+            $currentCode = $this->resource->getCodeById($typeId);
+            if ($currentCode !== null && $currentCode !== $code) {
+                throw new InputException(__('The content type code cannot be changed after creation.'));
+            }
+        }
+
+        if ($this->resource->codeExists($code, $typeId)) {
+            throw new AlreadyExistsException(__('A content type with code "%1" already exists.', $code));
+        }
+
+        $labels = $type->getLabels();
+        if (trim((string) ($labels[0] ?? '')) === '') {
+            throw new InputException(__('The default label is required.'));
+        }
+    }
+}
