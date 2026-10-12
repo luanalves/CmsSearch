@@ -40,7 +40,9 @@ class ContentType extends AbstractDb
 
     protected function _afterLoad(AbstractModel $object)
     {
-        $object->setData(ContentTypeInterface::LABELS, $this->loadLabels((int) $object->getId()));
+        if ($object->getId()) {
+            $object->setData(ContentTypeInterface::LABELS, $this->loadLabels((int) $object->getId()));
+        }
         return parent::_afterLoad($object);
     }
 

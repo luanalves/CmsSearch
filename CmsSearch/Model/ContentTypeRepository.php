@@ -41,6 +41,8 @@ class ContentTypeRepository implements ContentTypeRepositoryInterface
         $this->validate($type);
         try {
             $this->resource->save($type);
+        } catch (AlreadyExistsException $exception) {
+            throw $exception;
         } catch (\Exception $exception) {
             throw new CouldNotSaveException(__('Could not save the content type: %1', $exception->getMessage()), $exception);
         }
@@ -81,10 +83,9 @@ class ContentTypeRepository implements ContentTypeRepositoryInterface
         $collection = $this->collectionFactory->create();
         $this->collectionProcessor->process($searchCriteria, $collection);
 
-        $items = [];
-        foreach ($collection->getAllIds() as $typeId) {
-            $items[] = $this->getById((int) $typeId);
-        }
+        // getItems() loads the collection, so sort orders and paging are applied;
+        // labels are hydrated by the collection in a single query.
+        $items = array_values($collection->getItems());
 
         $results = $this->searchResultsFactory->create();
         $results->setSearchCriteria($searchCriteria);

@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Test\Unit\Model;
 
 use Magento\Framework\Api\SearchCriteriaInterface;
-use Magento\Framework\Api\SearchResultsInterface;
 use Magento\Framework\Api\SearchCriteria\CollectionProcessorInterface;
 use Magento\Framework\Exception\AlreadyExistsException;
+use Magento\Framework\Exception\CouldNotDeleteException;
+use Magento\Framework\Exception\CouldNotSaveException;
 use Magento\Framework\Exception\InputException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterfaceFactory;
 use Thedevkitchen\CmsSearch\Exception\ContentTypeInUseException;
 use Thedevkitchen\CmsSearch\Model\ContentType;
@@ -19,6 +21,7 @@ use Thedevkitchen\CmsSearch\Model\ContentType\DeleteGuard;
 use Thedevkitchen\CmsSearch\Model\ContentTypeFactory;
 use Thedevkitchen\CmsSearch\Model\ContentTypeRepository;
 use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType as ContentTypeResource;
+use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\Collection;
 use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\CollectionFactory;
 
 class ContentTypeRepositoryTest extends TestCase
@@ -26,6 +29,9 @@ class ContentTypeRepositoryTest extends TestCase
     private ContentTypeResource&MockObject $resource;
     private ContentTypeFactory&MockObject $factory;
     private DeleteGuard&MockObject $deleteGuard;
+    private CollectionFactory&MockObject $collectionFactory;
+    private CollectionProcessorInterface&MockObject $collectionProcessor;
+    private ContentTypeSearchResultsInterfaceFactory&MockObject $searchResultsFactory;
     private ContentTypeRepository $repository;
 
     protected function setUp(): void
@@ -33,12 +39,15 @@ class ContentTypeRepositoryTest extends TestCase
         $this->resource = $this->createMock(ContentTypeResource::class);
         $this->factory = $this->createMock(ContentTypeFactory::class);
         $this->deleteGuard = $this->createMock(DeleteGuard::class);
+        $this->collectionFactory = $this->createMock(CollectionFactory::class);
+        $this->collectionProcessor = $this->createMock(CollectionProcessorInterface::class);
+        $this->searchResultsFactory = $this->createMock(ContentTypeSearchResultsInterfaceFactory::class);
         $this->repository = new ContentTypeRepository(
             $this->resource,
             $this->factory,
-            $this->createMock(CollectionFactory::class),
-            $this->createMock(CollectionProcessorInterface::class),
-            $this->createMock(ContentTypeSearchResultsInterfaceFactory::class),
+            $this->collectionFactory,
+            $this->collectionProcessor,
+            $this->searchResultsFactory,
             $this->deleteGuard
         );
     }
@@ -139,7 +148,7 @@ class ContentTypeRepositoryTest extends TestCase
     {
         $loaded = $this->type(7, 'tv');
         $this->factory->method('create')->willReturn($loaded);
-        $this->resource->method('load')->willReturnCallback(
+        $this->resource->expects($this->once())->method('load')->willReturnCallback(
             function (ContentType $model, $id) use ($loaded) {
                 $this->assertSame($loaded, $model);
                 $this->assertSame(7, $id);
@@ -149,5 +158,64 @@ class ContentTypeRepositoryTest extends TestCase
         $this->resource->expects($this->once())->method('delete')->with($loaded);
 
         $this->assertTrue($this->repository->deleteById(7));
+    }
+
+    public function testSaveDoesNotRewrapAlreadyExists(): void
+    {
+        $this->resource->method('codeExists')->willReturn(false);
+        $this->resource->method('save')->willThrowException(new AlreadyExistsException(__('race')));
+        $this->expectException(AlreadyExistsException::class);
+        $this->repository->save($this->type(null, 'news'));
+    }
+
+    public function testSaveWrapsOtherFailures(): void
+    {
+        $this->resource->method('codeExists')->willReturn(false);
+        $this->resource->method('save')->willThrowException(new \RuntimeException('db'));
+        $this->expectException(CouldNotSaveException::class);
+        $this->repository->save($this->type(null, 'news'));
+    }
+
+    public function testDeleteWrapsFailures(): void
+    {
+        $this->resource->method('delete')->willThrowException(new \RuntimeException('db'));
+        $this->expectException(CouldNotDeleteException::class);
+        $this->repository->delete($this->type(7, 'tv'));
+    }
+
+    public function testGetByCodeReturnsTheType(): void
+    {
+        $loaded = $this->type(7, 'tv');
+        $this->factory->method('create')->willReturn($loaded);
+        $this->resource->expects($this->once())->method('load')->with($loaded, 'tv', 'code');
+        $this->assertSame($loaded, $this->repository->getByCode('tv'));
+    }
+
+    public function testGetByCodeThrowsWhenMissing(): void
+    {
+        $this->factory->method('create')->willReturn($this->type(null, 'x'));
+        $this->expectException(NoSuchEntityException::class);
+        $this->repository->getByCode('missing');
+    }
+
+    public function testGetListProcessesCriteriaAndKeepsCollectionOrder(): void
+    {
+        $first = $this->type(2, 'b');
+        $second = $this->type(1, 'a');
+        $criteria = $this->createMock(SearchCriteriaInterface::class);
+        $collection = $this->createMock(Collection::class);
+        $collection->method('getItems')->willReturn([$first, $second]);
+        $collection->method('getSize')->willReturn(2);
+        $collection->expects($this->never())->method('getAllIds');
+        $this->collectionFactory->method('create')->willReturn($collection);
+        $this->collectionProcessor->expects($this->once())->method('process')->with($criteria, $collection);
+
+        $results = $this->createMock(ContentTypeSearchResultsInterface::class);
+        $results->expects($this->once())->method('setSearchCriteria')->with($criteria);
+        $results->expects($this->once())->method('setItems')->with([$first, $second]);
+        $results->expects($this->once())->method('setTotalCount')->with(2);
+        $this->searchResultsFactory->method('create')->willReturn($results);
+
+        $this->assertSame($results, $this->repository->getList($criteria));
     }
 }
