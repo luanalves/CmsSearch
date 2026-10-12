@@ -11,8 +11,12 @@ use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
+use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor;
+use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
+use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
+use Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
 
 /**
@@ -185,5 +189,31 @@ class DiPreferencesContractTest extends TestCase
         $this->assertSame(['Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Handler'], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $handlers));
         $file = $di->xpath('//virtualType[@name="Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Handler"]/arguments/argument[@name="fileName"]');
         $this->assertSame('/var/log/cmssearch_reindex.log', (string) $file[0]);
+    }
+
+    public function testTheAfterCommitFlushIsPluggedIntoEveryDbAdapter(): void
+    {
+        $di = $this->di('etc/di.xml');
+        $names = static fn (array $nodes): array => array_map(static fn ($node): string => ltrim((string) $node, '\\'), $nodes);
+        $this->assertSame(
+            [FlushReindexMessagesPlugin::class],
+            $names($di->xpath('//type[@name="Magento\\Framework\\DB\\Adapter\\AdapterInterface"]/plugin/@type'))
+        );
+        // A proxy: commits that have nothing pending must not build the publisher stack.
+        $this->assertSame(
+            [MessageSender::class . '\\Proxy'],
+            $names($di->xpath('//type[@name="Thedevkitchen\\CmsSearch\\Plugin\\Framework\\DB\\FlushReindexMessagesPlugin"]/arguments/argument[@name="sender"]'))
+        );
+        $this->assertSame(
+            [ReindexPublisher::class],
+            $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\ReindexPublisherInterface"]/@type'))
+        );
+        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class] as $class) {
+            $this->assertSame(
+                [self::LOGGER],
+                $names($di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),
+                "$class must log to var/log/cmssearch_reindex.log"
+            );
+        }
     }
 }

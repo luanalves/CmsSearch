@@ -70,4 +70,26 @@
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
+    <preference for="Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface"
+                type="Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher"/>
+    <type name="Thedevkitchen\CmsSearch\Model\Queue\MessageSender">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
+    <!-- After-commit flush of reindex requests (same interface as core's execute_commit_callbacks plugin). -->
+    <type name="Magento\Framework\DB\Adapter\AdapterInterface">
+        <plugin name="thedevkitchen_cmssearch_flush_reindex_messages"
+                type="Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin"/>
+    </type>
+    <type name="Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin">
+        <arguments>
+            <argument name="sender" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\MessageSender\Proxy</argument>
+        </arguments>
+    </type>
 </config>
