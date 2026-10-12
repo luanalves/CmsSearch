@@ -44,7 +44,7 @@
         <columnsControls name="columns_controls"/>
         <filterSearch name="fulltext"/>
         <filters name="listing_filters"/>
-        <massaction name="listing_massaction">
+        <massaction name="listing_massaction" component="Magento_Ui/js/grid/tree-massactions">
             <action name="delete">
                 <settings>
                     <confirm>
