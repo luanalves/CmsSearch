@@ -53,8 +53,12 @@ $canManage = $viewModel->canManage();
                         <span data-role="term-label"><?= $escaper->escapeHtml($row['label']) ?></span>
                     </td>
                     <td><?= $escaper->escapeHtml($row['code']) ?></td>
-                    <td data-role="term-status"><?=
-                        $escaper->escapeHtml($row['is_active'] ? __('Enabled') : __('Disabled')) ?></td>
+                    <td data-role="term-status"<?= $row['is_active'] && !$row['effective_active'] ? ' data-effective="0"' : '' ?>><?=
+                        $escaper->escapeHtml(
+                            !$row['is_active']
+                                ? __('Disabled')
+                                : ($row['effective_active'] ? __('Enabled') : __('Enabled (inactive parent)'))
+                        ) ?></td>
                     <td><?= (int) $row['sort_order'] ?></td>
                     <td data-role="term-pages"><?= (int) $row['pages'] ?></td>
                     <td>

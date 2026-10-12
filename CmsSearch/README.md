@@ -20,9 +20,9 @@ Not delivered yet: queue and reindex messages (Plan 3), indexer (Plan 4), search
 ## Classification
 
 - Admin: Content > CMS Search > Classification. Pick a website, then "Add Root Term", "Add child", "Edit".
-- One tree per website. A term has a code (lowercase letters, digits, underscore; unique in the website; immutable), a default label plus optional labels for the store views of its website, a sort order among its siblings and an active flag.
+- One tree per website. A term has a code (lowercase letters, digits, underscore; unique in the website; immutable), a default label plus optional labels for the store views of its website, a sort order among its siblings and an active flag. Saving an existing term with no `parent_id` in the post keeps its parent; an explicit empty `parent_id` moves it to the root.
 - Move: change "Parent term" in the term form. The term and all of its descendants get a new `path`/`level` in one transaction. A term cannot move under itself or a descendant, nor to another website; the tree has at most 10 levels.
-- Delete is blocked while the term has child terms or linked CMS Pages (the message lists up to 5 pages). Deactivation is always allowed; a deactivated term hides its whole branch from the CMS Page form.
+- Delete is blocked while the term has child terms or linked CMS Pages (the message lists up to 5 pages). Deactivation is always allowed; a deactivated term hides its whole branch from the CMS Page form. The tree shows descendants of a disabled term as "Enabled (inactive parent)" (`effective_active` = the term and all ancestors are active).
 - ACL: `Thedevkitchen_CmsSearch::classification` (read-only tree and forms) and `::classification_manage` (create, edit, move, activate, delete).
 - Database: `thedevkitchen_cmssearch_classification_term` (`website_id` FK CASCADE, `parent_id` self FK NO ACTION) and `..._term_label`; `page_classification.term_id` has an FK NO ACTION. Consequence of the NO ACTION self FK: deleting a whole website whose tree has more than one level fails at the database level; delete or move its terms first (website deletion is also blocked while pages are linked to its terms).
 
@@ -31,7 +31,8 @@ Not delivered yet: queue and reindex messages (Plan 3), indexer (Plan 4), search
 - Two single-select fields: "Content Type" (active types; a page linked to a type that was later deactivated keeps it, shown as "(inactive)") and "Search Classification" (active terms of the websites of the page's store views; All Store Views = every website).
 - Both filled or both empty. A page without type or term stays saveable; it is simply not indexed.
 - Validated on the server (`Model\PageClassification\AssignmentValidator`): type and term must exist, the term must belong to a website of the page's store views, inactive values are accepted only when they are the page's current values.
-- Persisted by an observer on `cms_page_save_after` through `PageClassificationRepositoryInterface` (keyed by `page_id`, stable under Staging). The event fires inside the page-save transaction, so an invalid pair rolls the page save back and the admin sees the message. Saves that do not carry the fieldset (REST, grid inline edit, mass actions, Staging versions) leave the link untouched.
+- Persisted by an observer on `cms_page_save_after` through `PageClassificationRepositoryInterface` (keyed by `page_id`, stable under Staging). The event fires inside the page-save transaction, so an invalid pair rolls the page save back and the admin sees the message. The fieldset counts as submitted only when the form marker is exactly `1`; saves without it (REST, grid inline edit, mass actions, Staging versions, stray `type`/`term` keys) leave the link untouched.
+- "Save & Duplicate" (`Magento\Cms\Controller\Adminhtml\Page\Save::processResultRedirect`) builds the copy from the same posted data, marker included, so the copy gets the same type/term pair (verified in the core source; no automated test).
 - Wiring: the fieldset is added by its own modifier pool passed to `Magento\Cms\Model\Page\DataProvider`, plus an `afterGetData` plugin for the values. A third-party module that configures the same `pool` argument would conflict.
 - `events.xml` changes need `bin/magento cache:flush`; `cache:clean config` is not enough.
 - The Staging "Schedule New Update" form has no "Search" fieldset on purpose: type and term belong to the page, not to a version.
@@ -40,6 +41,7 @@ Not delivered yet: queue and reindex messages (Plan 3), indexer (Plan 4), search
 ## Pending items (backlog)
 
 - Dynamic Blocks restricted by a Customer Segment are excluded from the index in v1 (spec option A). The segment ids will be stored so option B (filter by the logged-in customer's segments at query time) can be enabled later; that needs a decision on the Varnish impact (customer-dependent results) and on cart/catalog price rules tied to Dynamic Blocks.
+- Plan 3 must also hook `ContentTypeRepository`: label, sort order and active changes of a type change the indexed data of every page linked to it.
 - Plan 3 hooks reindex messages on the two repositories (`ClassificationTermRepository`, `PageClassificationRepository`): moving or deactivating a term will then reindex the pages of its subtree.
 
 ## Tests

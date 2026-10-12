@@ -154,6 +154,9 @@ class FormDataProvider extends AbstractDataProvider
 
     private function positiveInt(mixed $value): int
     {
+        if (!is_scalar($value)) {
+            return 0; // a crafted array/object value must never reach a string cast
+        }
         $value = (string) $value;
         return ctype_digit($value) ? (int) $value : 0;
     }

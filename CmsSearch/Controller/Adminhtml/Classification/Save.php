@@ -22,6 +22,10 @@ class Save extends AbstractClassification implements HttpPostActionInterface
 {
     public const ADMIN_RESOURCE = self::RESOURCE_MANAGE;
     public const PERSISTOR_KEY = 'thedevkitchen_cmssearch_classification_term';
+    private const FORM_FIELDS = [
+        'term_id', 'website_id', 'website_name', 'parent_id', 'code', 'sort_order', 'is_active',
+        'default_label', 'store_labels',
+    ];
 
     public function __construct(
         Context $context,
@@ -60,7 +64,10 @@ class Save extends AbstractClassification implements HttpPostActionInterface
                 $term->setWebsiteId((int) $this->input->optionalId($data['website_id'] ?? null));
             }
             $websiteId = $term->getWebsiteId();
-            $term->setParentId($this->input->optionalId($data['parent_id'] ?? null));
+            // An existing term whose post carries no parent_id key keeps its parent; an explicit empty value means root.
+            if ($termId <= 0 || array_key_exists('parent_id', $data)) {
+                $term->setParentId($this->input->optionalId($data['parent_id'] ?? null));
+            }
             $term->setSortOrder($this->input->sortOrder($data['sort_order'] ?? null));
             $term->setIsActive($this->input->flag($data['is_active'] ?? null));
             $term->setLabels($this->mapper->toLabels($data));
@@ -79,10 +86,30 @@ class Save extends AbstractClassification implements HttpPostActionInterface
             $this->messageManager->addErrorMessage(__('Something went wrong while saving the classification term.'));
         }
 
-        $this->dataPersistor->set(self::PERSISTOR_KEY, $data);
+        $this->dataPersistor->set(self::PERSISTOR_KEY, $this->persistable($data));
         if ($termId > 0) {
             return $redirect->setPath('*/*/edit', ['term_id' => $termId]);
         }
         return $redirect->setPath('*/*/new', $websiteId > 0 ? ['website_id' => $websiteId] : []);
+    }
+
+    /**
+     * Only the known form fields come back to the form (no form_key, no crafted extras); scalars stay scalars.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function persistable(array $data): array
+    {
+        $persist = [];
+        foreach (self::FORM_FIELDS as $field) {
+            if (!array_key_exists($field, $data)) {
+                continue;
+            }
+            if ($field === 'store_labels' ? is_array($data[$field]) : is_scalar($data[$field])) {
+                $persist[$field] = $data[$field];
+            }
+        }
+        return $persist;
     }
 }

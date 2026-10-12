@@ -94,4 +94,18 @@ class TreeBuilderTest extends TestCase
         $tree = (new TreeBuilder($resource))->build(3);
         $this->assertSame('Fitness', $tree[0]['label']);
     }
+
+    public function testEffectiveActiveIsFalseBelowADisabledTerm(): void
+    {
+        $rows = [
+            $this->row(1, null, '1'),
+            $this->row(2, 1, '1/2', 0, false),
+            $this->row(3, 2, '1/2/3'),
+            $this->row(4, 1, '1/4'),
+        ];
+        $flat = $this->builder()->flatten($this->builder()->assemble($rows, [], 0, false));
+        $byId = array_column($flat, 'effective_active', 'term_id');
+        $this->assertSame([1 => true, 2 => false, 3 => false, 4 => true], $byId);
+        $this->assertTrue($flat[2]['is_active'], 'the own flag of the grandchild is untouched');
+    }
 }

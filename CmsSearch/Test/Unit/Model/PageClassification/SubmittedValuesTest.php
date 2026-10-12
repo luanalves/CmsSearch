@@ -36,9 +36,20 @@ class SubmittedValuesTest extends TestCase
         );
     }
 
-    public function testFieldsWithoutTheMarkerStillCount(): void
+    public function testFieldsWithoutTheMarkerAreNotASubmission(): void
     {
-        $this->assertSame(['type_id' => 3, 'term_id' => null], $this->read([FormFields::TYPE => '3', FormFields::TERM => '']));
+        $this->assertNull($this->read([FormFields::TYPE => '3', FormFields::TERM => '']));
+        $this->assertNull($this->read([FormFields::TYPE => '', FormFields::TERM => '']));
+    }
+
+    public function testOnlyTheExactMarkerOneCounts(): void
+    {
+        foreach (['', 'true', '2', ' 1', 'yes', ['1']] as $marker) {
+            $this->assertNull(
+                $this->read([FormFields::MARKER => $marker, FormFields::TYPE => '3', FormFields::TERM => '10']),
+                'marker ' . json_encode($marker)
+            );
+        }
     }
 
     public function testAFieldsetThatCouldNotBeLoadedIsNotASubmission(): void

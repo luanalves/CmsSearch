@@ -131,4 +131,38 @@ class SchemaContractTest extends TestCase
         $indexed = array_map('strval', $this->table(Tables::PAGE_CLASSIFICATION)->xpath('index/column/@name'));
         $this->assertContains('term_id', $indexed);
     }
+
+    public function testTermUnsignedFlagsDefaultsAndPathIndex(): void
+    {
+        $table = Tables::CLASSIFICATION_TERM;
+        foreach (['term_id', 'website_id', 'parent_id', 'level', 'sort_order', 'is_active'] as $column) {
+            $this->assertSame('true', $this->column($table, $column)['unsigned'] ?? null, "$column must be unsigned");
+        }
+        $this->assertSame('false', $this->column($table, 'code')['nullable'] ?? null);
+        $this->assertSame('', $this->column($table, 'path')['default'] ?? null);
+        $this->assertSame('0', $this->column($table, 'level')['default'] ?? null);
+        $this->assertSame('0', $this->column($table, 'sort_order')['default'] ?? null);
+        $this->assertSame('1', $this->column($table, 'is_active')['default'] ?? null);
+        $pathIndexes = array_filter(
+            $this->table($table)->xpath('index'),
+            static fn (\SimpleXMLElement $index): bool => array_map('strval', $index->xpath('column/@name')) === ['path']
+        );
+        $this->assertCount(1, $pathIndexes, 'the path column needs its own index (subtree lookups by prefix)');
+    }
+
+    public function testEveryDeclaredTableAndColumnIsInTheWhitelist(): void
+    {
+        $json = file_get_contents(dirname(__DIR__, 3) . '/etc/db_schema_whitelist.json');
+        $whitelist = json_decode((string) $json, true, 512, JSON_THROW_ON_ERROR);
+        $declared = array_map('strval', $this->schema()->xpath('/schema/table/@name'));
+        sort($declared);
+        $listed = array_keys($whitelist);
+        sort($listed);
+        $this->assertSame($declared, $listed, 'tables of db_schema.xml and of the whitelist must be the same set');
+        foreach ($declared as $name) {
+            foreach ($this->table($name)->xpath('column/@name') as $column) {
+                $this->assertArrayHasKey((string) $column, $whitelist[$name]['column'] ?? [], "$name.$column missing in db_schema_whitelist.json");
+            }
+        }
+    }
 }

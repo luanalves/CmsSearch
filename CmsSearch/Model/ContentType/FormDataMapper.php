@@ -19,9 +19,15 @@ class FormDataMapper
         if ($default !== '') {
             $labels[0] = $default;
         }
+        // Rule: a store label row counts only with a store_id made of digits only (positive) and a scalar label;
+        // anything else ("abc", "1abc", "1.5", arrays) is ignored, never coerced to another store.
         foreach ((array) ($post['store_labels'] ?? []) as $row) {
-            $storeId = (int) ($row['store_id'] ?? 0);
-            $label = trim((string) ($row['label'] ?? ''));
+            if (!is_array($row) || !is_scalar($row['store_id'] ?? null) || !is_scalar($row['label'] ?? null)) {
+                continue;
+            }
+            $rawStoreId = (string) $row['store_id'];
+            $storeId = ctype_digit($rawStoreId) ? (int) $rawStoreId : 0;
+            $label = trim((string) $row['label']);
             if ($storeId > 0 && $label !== '') {
                 $labels[$storeId] = $label;
             }

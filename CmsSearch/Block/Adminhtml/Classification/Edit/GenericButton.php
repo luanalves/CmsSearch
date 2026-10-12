@@ -18,7 +18,8 @@ class GenericButton
 
     public function getTermId(): ?int
     {
-        $termId = (string) $this->context->getRequest()->getParam('term_id');
+        $param = $this->context->getRequest()->getParam('term_id');
+        $termId = is_scalar($param) ? (string) $param : '';
         return ctype_digit($termId) && (int) $termId > 0 ? (int) $termId : null;
     }
 

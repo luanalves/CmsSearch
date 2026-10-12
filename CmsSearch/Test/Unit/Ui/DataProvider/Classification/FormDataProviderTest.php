@@ -157,4 +157,22 @@ class FormDataProviderTest extends TestCase
         $this->repository->expects($this->never())->method('getById');
         $this->assertSame([4 => $persisted], $provider->getData());
     }
+
+    public function testANonScalarPersistedTermIdDoesNotBreakTheForm(): void
+    {
+        $provider = $this->provider(['term_id' => '4']);
+        $this->persistor->method('get')->with(Save::PERSISTOR_KEY)->willReturn(['term_id' => ['x'], 'default_label' => 'typed']);
+        $this->repository->expects($this->once())->method('getById')->with(4)->willReturn(
+            ClassificationTermBuilder::build(fn (string $c) => $this->createMock($c), 4, 2, 'milho', 1)
+        );
+        $this->assertArrayHasKey(4, $provider->getData());
+    }
+
+    public function testNonScalarRequestParametersAreTreatedAsAbsent(): void
+    {
+        $provider = $this->provider(['term_id' => ['1'], 'website_id' => ['2'], 'parent_id' => ['1']]);
+        $this->repository->expects($this->never())->method('getById');
+        $this->assertSame([], $provider->getData());
+        $this->assertArrayHasKey('general', $provider->getMeta());
+    }
 }

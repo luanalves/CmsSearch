@@ -29,7 +29,7 @@ class TreeBuilder
      * @param list<array{term_id:int, parent_id:?int, code:string, path:string, level:int, sort_order:int, is_active:bool}> $rows
      * @param array<int, array<int, string>> $labels term id => store id => label
      * @return list<array{term_id:int, parent_id:?int, code:string, label:string, path:string, level:int,
-     *     sort_order:int, is_active:bool, children:list<array<string, mixed>>}>
+     *     sort_order:int, is_active:bool, effective_active:bool, children:list<array<string, mixed>>}>
      */
     public function assemble(array $rows, array $labels, int $storeId, bool $activeOnly): array
     {
@@ -45,20 +45,23 @@ class TreeBuilder
         }
         unset($siblings);
 
-        $build = function (int $parentKey) use (&$build, $byParent, $labels, $storeId, $activeOnly): array {
+        $build = function (int $parentKey, bool $parentEffective) use (&$build, $byParent, $labels, $storeId, $activeOnly): array {
             $nodes = [];
             foreach ($byParent[$parentKey] ?? [] as $row) {
                 if ($activeOnly && !$row['is_active']) {
                     continue; // its descendants are skipped with it
                 }
+                // effective_active: the term and every ancestor are active (a disabled term hides its whole branch)
+                $effective = $parentEffective && $row['is_active'];
                 $nodes[] = $row + [
                     'label' => $this->label($labels[$row['term_id']] ?? [], $storeId, $row['code']),
-                    'children' => $build($row['term_id']),
+                    'effective_active' => $effective,
+                    'children' => $build($row['term_id'], $effective),
                 ];
             }
             return $nodes;
         };
-        return $build(0);
+        return $build(0, true);
     }
 
     /**

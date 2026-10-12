@@ -197,4 +197,49 @@ class SaveTest extends TestCase
         $this->redirect->expects($this->once())->method('setPath')->with('*/*/edit', ['term_id' => 15]);
         $controller->execute();
     }
+
+    public function testAnExistingTermWithoutParentKeyKeepsItsParent(): void
+    {
+        $post = $this->validNew(['term_id' => '9']);
+        unset($post['parent_id']);
+        $controller = $this->controller($post);
+        $existing = $this->term(9, 2, 'milho')->setParentId(7);
+        $this->repository->method('getById')->with(9)->willReturn($existing);
+        $seen = 'not saved';
+        $this->repository->expects($this->once())->method('save')->willReturnCallback(
+            function (ClassificationTerm $saved) use (&$seen): ClassificationTerm {
+                $seen = $saved->getParentId(); // asserted after execute(): the controller swallows Throwables
+                return $saved;
+            }
+        );
+        $controller->execute();
+        $this->assertSame(7, $seen);
+    }
+
+    public function testAnExplicitEmptyParentMovesAnExistingTermToTheRoot(): void
+    {
+        $controller = $this->controller($this->validNew(['term_id' => '9', 'parent_id' => '']));
+        $this->repository->method('getById')->with(9)->willReturn($this->term(9, 2, 'milho')->setParentId(7));
+        $seen = 'not saved';
+        $this->repository->expects($this->once())->method('save')->willReturnCallback(
+            function (ClassificationTerm $saved) use (&$seen): ClassificationTerm {
+                $seen = $saved->getParentId();
+                return $saved;
+            }
+        );
+        $controller->execute();
+        $this->assertNull($seen);
+    }
+
+    public function testOnlyKnownScalarFieldsAreKeptForTheNextFormOpen(): void
+    {
+        $post = $this->validNew(['term_id' => '9', 'form_key' => 'secret', 'evil' => 'x', 'code' => ['a'], 'sort_order' => '-1']);
+        $controller = $this->controller($post);
+        $this->repository->method('getById')->willThrowException(new LocalizedException(__('gone')));
+        $this->persistor->expects($this->once())->method('set')->with(
+            Save::PERSISTOR_KEY,
+            ['term_id' => '9', 'website_id' => '2', 'parent_id' => '4', 'sort_order' => '-1', 'is_active' => '1', 'default_label' => 'Milho']
+        );
+        $controller->execute();
+    }
 }

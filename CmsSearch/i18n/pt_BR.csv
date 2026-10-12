@@ -113,3 +113,4 @@ Disabled,Inativo
 "Parent term","Termo pai"
 "Choose another parent to move the term together with all of its descendants.","Escolha outro pai para mover o termo junto com todos os seus descendentes."
 "Lowercase letters, digits and underscore. Unique in the website. Cannot be changed after creation.","Letras minúsculas, números e underscore. Único no website. Não pode ser alterado após a criação."
+"Enabled (inactive parent)","Ativo (pai inativo)"

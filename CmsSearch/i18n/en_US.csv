@@ -113,3 +113,4 @@ Disabled,Disabled
 "Parent term","Parent term"
 "Choose another parent to move the term together with all of its descendants.","Choose another parent to move the term together with all of its descendants."
 "Lowercase letters, digits and underscore. Unique in the website. Cannot be changed after creation.","Lowercase letters, digits and underscore. Unique in the website. Cannot be changed after creation."
+"Enabled (inactive parent)","Enabled (inactive parent)"

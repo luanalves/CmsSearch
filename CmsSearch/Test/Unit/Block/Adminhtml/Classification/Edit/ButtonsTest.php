@@ -48,4 +48,15 @@ class ButtonsTest extends TestCase
             $this->assertNotSame([], $this->make($class, 0, [Acl::RESOURCE_MANAGE])->getButtonData());
         }
     }
+
+    public function testANonScalarTermIdParameterIsIgnored(): void
+    {
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getParam')->willReturn(['5']);
+        $context = $this->createMock(Context::class);
+        $context->method('getRequest')->willReturn($request);
+        $button = new DeleteButton($context, $this->createMock(AuthorizationInterface::class));
+        $this->assertNull($button->getTermId());
+        $this->assertSame([], $button->getButtonData());
+    }
 }

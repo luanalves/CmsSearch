@@ -31,6 +31,26 @@ class FormDataMapperTest extends TestCase
         $this->assertSame([0 => 'News', 2 => 'Noticias'], $labels);
     }
 
+    public function testStoreIdsMustBeDigitStrings(): void
+    {
+        $labels = $this->mapper->toLabels([
+            'default_label' => 'News',
+            'store_labels' => [
+                ['store_id' => 'abc', 'label' => 'a'],
+                ['store_id' => '1abc', 'label' => 'b'],
+                ['store_id' => '1.5', 'label' => 'c'],
+                ['store_id' => '-2', 'label' => 'd'],
+                ['store_id' => ' 3', 'label' => 'e'],
+                ['store_id' => ['4'], 'label' => 'f'],
+                ['store_id' => '5', 'label' => ['g']],
+                'not-a-row',
+                ['store_id' => '07', 'label' => 'ok'],
+            ],
+        ]);
+
+        $this->assertSame([0 => 'News', 7 => 'ok'], $labels);
+    }
+
     public function testReturnsEmptyLabelsWhenNothingWasPosted(): void
     {
         $this->assertSame([], $this->mapper->toLabels([]));
