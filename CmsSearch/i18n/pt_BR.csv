@@ -1,0 +1,50 @@
+Back,Voltar
+Delete,Excluir
+"Are you sure you want to delete this content type?","Tem certeza de que deseja excluir este tipo de conteúdo?"
+"Save and Continue Edit","Salvar e continuar editando"
+Save,Salvar
+"We can't find a content type to delete.","Não encontramos um tipo de conteúdo para excluir."
+"You deleted the content type.","Tipo de conteúdo excluído."
+"This content type no longer exists.","Este tipo de conteúdo não existe mais."
+"Edit Content Type","Editar tipo de conteúdo"
+"New Content Type","Novo tipo de conteúdo"
+"Content Types","Tipos de conteúdo"
+"Please correct the data sent.","Corrija os dados enviados."
+"A total of %1 record(s) have been deleted.","%1 registro(s) excluído(s)."
+"A total of %1 record(s) have been updated.","%1 registro(s) atualizado(s)."
+"You are not allowed to edit content types.","Você não tem permissão para editar tipos de conteúdo."
+"You saved the content type.","Tipo de conteúdo salvo."
+"Something went wrong while saving the content type.","Ocorreu um erro ao salvar o tipo de conteúdo."
+"and %1 more","e mais %1"
+"The content type ""%1"" cannot be deleted: it is linked to %2 CMS page(s) (%3). Unlink the pages or deactivate the type.","O tipo de conteúdo ""%1"" não pode ser excluído: está vinculado a %2 página(s) CMS (%3). Desvincule as páginas ou desative o tipo."
+"Could not save the content type: %1","Não foi possível salvar o tipo de conteúdo: %1"
+"The content type with id ""%1"" does not exist.","O tipo de conteúdo com id ""%1"" não existe."
+"The content type with code ""%1"" does not exist.","O tipo de conteúdo com código ""%1"" não existe."
+"Could not delete the content type: %1","Não foi possível excluir o tipo de conteúdo: %1"
+"The content type code must have 1-64 characters: lowercase letters, digits and underscore.","O código do tipo deve ter de 1 a 64 caracteres: letras minúsculas, números e underscore."
+"The content type code cannot be changed after creation.","O código do tipo não pode ser alterado após a criação."
+"A content type with code ""%1"" already exists.","Já existe um tipo de conteúdo com o código ""%1""."
+"The default label is required.","O rótulo padrão é obrigatório."
+Edit,Editar
+"Delete content type","Excluir tipo de conteúdo"
+"Are you sure you want to delete the content type ""%1""?","Tem certeza de que deseja excluir o tipo de conteúdo ""%1""?"
+"CMS Search","Busca CMS"
+Create,Criar
+"Content Type","Tipo de conteúdo"
+Code,Código
+"Lowercase letters, digits and underscore. Cannot be changed after creation.","Letras minúsculas, números e underscore. Não pode ser alterado após a criação."
+"Default label","Rótulo padrão"
+"Tab order","Ordem da aba"
+Enable,Ativar
+"Add Store View Label","Adicionar rótulo de store view"
+"Store View Labels","Rótulos por store view"
+"Store View","Store view"
+Label,Rótulo
+"Add New Content Type","Adicionar tipo de conteúdo"
+"Are you sure you want to delete the selected content types? Types linked to CMS pages are skipped.","Tem certeza de que deseja excluir os tipos de conteúdo selecionados? Tipos vinculados a páginas CMS são ignorados."
+"Delete content types","Excluir tipos de conteúdo"
+"Change status","Alterar status"
+Disable,Desativar
+ID,ID
+Status,Status
+"Linked pages","Páginas vinculadas"

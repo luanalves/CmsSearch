@@ -1,0 +1,50 @@
+Back,Back
+Delete,Delete
+"Are you sure you want to delete this content type?","Are you sure you want to delete this content type?"
+"Save and Continue Edit","Save and Continue Edit"
+Save,Save
+"We can't find a content type to delete.","We can't find a content type to delete."
+"You deleted the content type.","You deleted the content type."
+"This content type no longer exists.","This content type no longer exists."
+"Edit Content Type","Edit Content Type"
+"New Content Type","New Content Type"
+"Content Types","Content Types"
+"Please correct the data sent.","Please correct the data sent."
+"A total of %1 record(s) have been deleted.","A total of %1 record(s) have been deleted."
+"A total of %1 record(s) have been updated.","A total of %1 record(s) have been updated."
+"You are not allowed to edit content types.","You are not allowed to edit content types."
+"You saved the content type.","You saved the content type."
+"Something went wrong while saving the content type.","Something went wrong while saving the content type."
+"and %1 more","and %1 more"
+"The content type ""%1"" cannot be deleted: it is linked to %2 CMS page(s) (%3). Unlink the pages or deactivate the type.","The content type ""%1"" cannot be deleted: it is linked to %2 CMS page(s) (%3). Unlink the pages or deactivate the type."
+"Could not save the content type: %1","Could not save the content type: %1"
+"The content type with id ""%1"" does not exist.","The content type with id ""%1"" does not exist."
+"The content type with code ""%1"" does not exist.","The content type with code ""%1"" does not exist."
+"Could not delete the content type: %1","Could not delete the content type: %1"
+"The content type code must have 1-64 characters: lowercase letters, digits and underscore.","The content type code must have 1-64 characters: lowercase letters, digits and underscore."
+"The content type code cannot be changed after creation.","The content type code cannot be changed after creation."
+"A content type with code ""%1"" already exists.","A content type with code ""%1"" already exists."
+"The default label is required.","The default label is required."
+Edit,Edit
+"Delete content type","Delete content type"
+"Are you sure you want to delete the content type ""%1""?","Are you sure you want to delete the content type ""%1""?"
+"CMS Search","CMS Search"
+Create,Create
+"Content Type","Content Type"
+Code,Code
+"Lowercase letters, digits and underscore. Cannot be changed after creation.","Lowercase letters, digits and underscore. Cannot be changed after creation."
+"Default label","Default label"
+"Tab order","Tab order"
+Enable,Enable
+"Add Store View Label","Add Store View Label"
+"Store View Labels","Store View Labels"
+"Store View","Store View"
+Label,Label
+"Add New Content Type","Add New Content Type"
+"Are you sure you want to delete the selected content types? Types linked to CMS pages are skipped.","Are you sure you want to delete the selected content types? Types linked to CMS pages are skipped."
+"Delete content types","Delete content types"
+"Change status","Change status"
+Disable,Disable
+ID,ID
+Status,Status
+"Linked pages","Linked pages"
