@@ -69,7 +69,7 @@ class AsyncOnlyContractTest extends TestCase
     public function testOnlyTheConsumerAndTheCliUseTheIndexWriters(): void
     {
         $this->assertSame(
-            ['Model/Queue/PageReindexProcessor.php'],
+            ['Console/Command/ReindexCommand.php', 'Model/Queue/PageReindexProcessor.php'],
             $this->usersOf(
                 ['PageIndexer', 'FullReindexer', 'IndexManager'],
                 ['Model/Indexer/PageIndexer.php', 'Model/Indexer/FullReindexer.php', 'Model/Indexer/IndexManager.php'],

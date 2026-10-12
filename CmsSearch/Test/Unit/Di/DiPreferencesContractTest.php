@@ -14,6 +14,7 @@ use Thedevkitchen\CmsSearch\Console\Command\ReindexCommand;
 use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
 use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
+use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
@@ -284,5 +285,16 @@ class DiPreferencesContractTest extends TestCase
         );
         $this->assertSame([ReindexCommand::class], array_map(static fn ($item): string => ltrim((string) $item, '\\'), $items));
         $this->assertSame('thedevkitchen:cmssearch:reindex', ReindexCommand::NAME);
+    }
+
+    public function testTheReindexCommandGetsTheFullReindexerAsAProxy(): void
+    {
+        // a proxy: listing bin/magento commands must not build the OpenSearch stack
+        $argument = $this->di('etc/di.xml')->xpath(
+            '//type[@name="Thedevkitchen\\CmsSearch\\Console\\Command\\ReindexCommand"]/arguments/argument[@name="fullReindexer"]'
+        );
+        $this->assertCount(1, $argument);
+        $this->assertSame('object', (string) $argument[0]->attributes('xsi', true)->type);
+        $this->assertSame(FullReindexer::class . '\\Proxy', ltrim((string) $argument[0], '\\'));
     }
 }

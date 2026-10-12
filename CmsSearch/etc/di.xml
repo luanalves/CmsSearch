@@ -127,4 +127,10 @@
             </argument>
         </arguments>
     </type>
+    <type name="Thedevkitchen\CmsSearch\Console\Command\ReindexCommand">
+        <arguments>
+            <!-- Proxy: listing bin/magento commands must not build the OpenSearch stack. -->
+            <argument name="fullReindexer" xsi:type="object">Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer\Proxy</argument>
+        </arguments>
+    </type>
 </config>
