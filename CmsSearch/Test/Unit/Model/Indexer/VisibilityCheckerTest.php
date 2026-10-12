@@ -130,6 +130,31 @@ class VisibilityCheckerTest extends TestCase
         $this->assertSame(V::TYPE_MISSING, (new V())->check(self::page(), self::LINK, null, null, self::store()));
     }
 
+    public function testAPageOfAllStoreViewsShadowedByAStoreViewPageIsNotServedThere(): void
+    {
+        $page = self::page(true, [0]);
+        $this->assertSame(V::SHADOWED, (new V())->check($page, self::LINK, self::type(), self::term(), self::store(), true));
+        $this->assertSame(V::VISIBLE, (new V())->check($page, self::LINK, self::type(), self::term(), self::store(), false));
+    }
+
+    public function testAShadowedPageIsHiddenBeforeItsClassificationIsLookedAt(): void
+    {
+        $this->assertSame(V::SHADOWED, (new V())->check(self::page(true, [0]), null, null, null, self::store(), true));
+    }
+
+    public function testAPageExplicitlyAssignedToTheStoreViewIsNeverShadowed(): void
+    {
+        $this->assertSame(V::VISIBLE, (new V())->check(self::page(true, [0, 2]), self::LINK, self::type(), self::term(), self::store(), true));
+        $this->assertSame(V::VISIBLE, (new V())->check(self::page(true, [2]), self::LINK, self::type(), self::term(), self::store(), true));
+    }
+
+    public function testMissingDisabledAndForeignPagesKeepTheirOwnReasonWhenShadowed(): void
+    {
+        $this->assertSame(V::PAGE_MISSING, (new V())->check(null, null, null, null, self::store(), true));
+        $this->assertSame(V::PAGE_INACTIVE, (new V())->check(self::page(false, [0]), self::LINK, self::type(), self::term(), self::store(), true));
+        $this->assertSame(V::NOT_IN_STORE, (new V())->check(self::page(true, [3]), self::LINK, self::type(), self::term(), self::store(), true));
+    }
+
     public function testStateWithoutALinkIsNotClassified(): void
     {
         $this->assertSame(V::NOT_CLASSIFIED, (new V())->check(self::page(), null, self::type(), self::term(), self::store()));

@@ -14,6 +14,11 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\TermState;
  * time: the page link may be stale (store views changed through REST/grid/Staging), so the term's website is compared
  * with the store view's website here. The store view belongs to the page (checked first), so this is exactly
  * "the term's website is one of the page's websites AND it is the website of this store view".
+ *
+ * Shadowing: Magento serves a CMS page by identifier with `store_id IN (0, S) ORDER BY store_id DESC LIMIT 1`
+ * (Magento\Cms\Model\ResourceModel\Page::checkIdentifier, active pages only), so a page of All Store Views whose
+ * identifier is also used by an active page assigned to store view S is never served in S. The caller computes that
+ * fact in batch (ShadowedPageReader) and passes it as $shadowed.
  */
 class VisibilityChecker
 {
@@ -21,6 +26,7 @@ class VisibilityChecker
     public const PAGE_MISSING = 'page_missing';
     public const PAGE_INACTIVE = 'page_inactive';
     public const NOT_IN_STORE = 'not_in_store';
+    public const SHADOWED = 'shadowed';
     public const NOT_CLASSIFIED = 'not_classified';
     public const TYPE_MISSING = 'type_missing';
     public const TYPE_INACTIVE = 'type_inactive';
@@ -30,13 +36,15 @@ class VisibilityChecker
 
     /**
      * @param array{type_id: int, term_id: int}|null $link
+     * @param bool $shadowed another active page with the same identifier is assigned to this store view
      */
     public function check(
         ?PageSnapshot $page,
         ?array $link,
         ?ContentTypeState $type,
         ?TermState $term,
-        StoreContext $store
+        StoreContext $store,
+        bool $shadowed = false
     ): string {
         if ($page === null) {
             return self::PAGE_MISSING;
@@ -47,6 +55,9 @@ class VisibilityChecker
         $storeIds = $page->getStoreIds();
         if (!in_array(0, $storeIds, true) && !in_array($store->getStoreId(), $storeIds, true)) {
             return self::NOT_IN_STORE;
+        }
+        if ($shadowed && !in_array($store->getStoreId(), $storeIds, true)) {
+            return self::SHADOWED; // served here only through store 0, and store 0 loses to the store view's page
         }
         if ($link === null) {
             return self::NOT_CLASSIFIED;
