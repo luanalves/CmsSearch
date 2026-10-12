@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/consumer.xsd">
+    <!-- Started by the native cron consumers_runner (cron_consumers_runner in app/etc/env.php) or by hand:
+         bin/magento queue:consumers:start thedevkitchen.cmssearch.reindex. Nothing consumes the DLQ. -->
+    <consumer name="thedevkitchen.cmssearch.reindex"
+              queue="thedevkitchen.cmssearch.reindex"
+              connection="amqp"
+              handler="Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler::process"
+              maxMessages="1000"/>
+</config>

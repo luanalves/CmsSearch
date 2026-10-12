@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Communication/etc/communication.xsd">
+    <!-- Body = JSON of ReindexMessageInterface::toArray() (Model\Queue\MessageCodec). Asynchronous, no response. -->
+    <topic name="thedevkitchen.cmssearch.reindex" request="string" is_synchronous="false"/>
+    <!-- Routing key of dead-lettered messages. Never published by anyone: declared only because the topology
+         DataMapper requires every non-wildcard binding topic (the DLQ binding) to be a known topic. -->
+    <topic name="thedevkitchen.cmssearch.reindex.dead" request="string" is_synchronous="false"/>
+</config>
