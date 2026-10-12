@@ -103,4 +103,11 @@
             </argument>
         </arguments>
     </type>
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="thedevkitchen_cmssearch_reindex" xsi:type="object">Thedevkitchen\CmsSearch\Console\Command\ReindexCommand</item>
+            </argument>
+        </arguments>
+    </type>
 </config>

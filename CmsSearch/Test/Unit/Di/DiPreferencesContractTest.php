@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
+use Thedevkitchen\CmsSearch\Console\Command\ReindexCommand;
 use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
@@ -28,6 +29,11 @@ class DiPreferencesContractTest extends TestCase
 {
     private const POOL = 'Thedevkitchen\\CmsSearch\\Ui\\DataProvider\\Page\\Form\\Modifier\\Pool';
     private const LOGGER = 'Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Logger';
+
+    /** Interfaces configured with <type> in our di.xml => the class Magento instantiates (app/etc/di.xml preference). */
+    private const IMPLEMENTATIONS = [
+        'Magento\\Framework\\Console\\CommandListInterface' => 'Magento\\Framework\\Console\\CommandList',
+    ];
 
     /** @return array<string, array{0: string}> */
     public static function files(): array
@@ -111,6 +117,7 @@ class DiPreferencesContractTest extends TestCase
             for ($i = 0; isset($virtual[$class]) && $i < 20; $i++) {
                 $class = $virtual[$class];
             }
+            $class = self::IMPLEMENTATIONS[$class] ?? $class;
             foreach ($node->xpath('arguments/argument') as $argument) {
                 $argName = (string) $argument['name'];
                 $constructor = (new \ReflectionClass($class))->getConstructor();
@@ -259,5 +266,21 @@ class DiPreferencesContractTest extends TestCase
         $this->assertSame('object', (string) $items[0]->attributes('xsi', true)->type);
         $this->assertSame(PageVersionApplied::class, ltrim((string) $items[0], '\\'));
         $this->assertTrue(is_a(PageVersionApplied::class, PostProcessorInterface::class, true));
+    }
+
+    public function testInterfaceTypesResolveToTheirImplementation(): void
+    {
+        foreach (self::IMPLEMENTATIONS as $interface => $class) {
+            $this->assertTrue(is_a($class, $interface, true), "$class must implement $interface");
+        }
+    }
+
+    public function testTheReindexCommandIsRegistered(): void
+    {
+        $items = $this->di('etc/di.xml')->xpath(
+            '//type[@name="Magento\\Framework\\Console\\CommandListInterface"]/arguments/argument[@name="commands"]/item'
+        );
+        $this->assertSame([ReindexCommand::class], array_map(static fn ($item): string => ltrim((string) $item, '\\'), $items));
+        $this->assertSame('thedevkitchen:cmssearch:reindex', ReindexCommand::NAME);
     }
 }
