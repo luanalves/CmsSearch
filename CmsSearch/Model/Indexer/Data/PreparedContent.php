@@ -10,10 +10,17 @@ namespace Thedevkitchen\CmsSearch\Model\Indexer\Data;
 final class PreparedContent
 {
     public function __construct(
+        private readonly int $pageId,
         private readonly string $text,
         private readonly string $summary,
         private readonly ?string $firstImage
     ) {
+    }
+
+    /** The page this content was prepared from (DocumentBuilder::build() refuses another page). */
+    public function getPageId(): int
+    {
+        return $this->pageId;
     }
 
     public function getText(): string

@@ -15,8 +15,12 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\TermState;
  * The search document of a visible CMS page in one store view (spec 4.1 / engineering 3.4). Its _id is
  * deterministic (page_<page_id>) so every write is an idempotent upsert.
  *
- * The expensive part (text extraction) does not depend on the store view: prepare() runs it once per page and
- * build() can be called for every store view with the same PreparedContent.
+ * The expensive part (text extraction) does not depend on the store view. Contract for the indexer: call prepare()
+ * ONCE per page, lazily on the first store view where the page is visible, and NOT AT ALL when the page is invisible
+ * in every store view (nothing to extract for a document that will be deleted); then pass the same PreparedContent
+ * to build() for every store view of that page (build() refuses the content of another page).
+ *
+ * text and summary are plain text, not HTML: the consumer of the index (Plan 5) must escape them on output.
  */
 class DocumentBuilder
 {
@@ -54,21 +58,28 @@ class DocumentBuilder
             // Page id only: never content.
             $this->logger->warning('CMS page text truncated for indexing', ['page_id' => $page->getPageId()]);
         }
-        return new PreparedContent($bounded, $this->summary($page->getMetaDescription(), $bounded), $content->getFirstImage());
+        return new PreparedContent($page->getPageId(), $bounded, $this->summary($page->getMetaDescription(), $bounded), $content->getFirstImage());
     }
 
     /**
-     * @param PreparedContent|null $prepared result of prepare() for this page; computed here when omitted
+     * @param PreparedContent $prepared result of prepare() for THIS page
      * @return array<string, mixed> exactly the fields of the strict mapping
+     * @throws \LogicException when $prepared belongs to another page
      */
     public function build(
         PageSnapshot $page,
         ContentTypeState $type,
         TermState $term,
         StoreContext $store,
-        ?PreparedContent $prepared = null
+        PreparedContent $prepared
     ): array {
-        $prepared ??= $this->prepare($page);
+        if ($prepared->getPageId() !== $page->getPageId()) {
+            throw new \LogicException(sprintf(
+                'Prepared content of page %d used for page %d.',
+                $prepared->getPageId(),
+                $page->getPageId()
+            ));
+        }
         return [
             'entity_type' => self::ENTITY_TYPE,
             'entity_id' => $page->getPageId(),
@@ -108,7 +119,8 @@ class DocumentBuilder
     private function summary(string $metaDescription, string $text): string
     {
         $meta = preg_replace('/\{\{.*?\}\}/s', ' ', $metaDescription) ?? '';
-        $meta = html_entity_decode(strip_tags($meta), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Strip, decode, strip again: an entity-encoded tag (&lt;b&gt;) must not survive as markup.
+        $meta = strip_tags(html_entity_decode(strip_tags($meta), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
         $source = trim(preg_replace('/\s+/u', ' ', $meta) ?? '');
         if ($source === '') {
             $source = $text;
@@ -148,7 +160,9 @@ class DocumentBuilder
             $segments = array_filter(explode('/', $path), static fn (string $part): bool => $part !== '');
             return rtrim($store->getMediaUrl(), '/') . '/' . implode('/', array_map('rawurlencode', $segments));
         }
-        return preg_match('#^https?://[^\s]+$#i', $source) === 1 ? $source : null;
+        // Absolute URLs are kept as written (http is not rewritten to https, a CDN may only serve http);
+        // only a safe character set is accepted: no quotes, angle brackets, spaces or control characters.
+        return preg_match("#^https?://[A-Za-z0-9\-._~:/?\#\[\]@!$&()*+,;=%]+$#", $source) === 1 ? $source : null;
     }
 
     private function updatedAt(?string $time): ?string

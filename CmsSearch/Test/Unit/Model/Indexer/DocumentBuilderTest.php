@@ -33,9 +33,16 @@ class DocumentBuilderTest extends TestCase
     }
 
     /** @return array<string, mixed> */
+    private function buildWith(PageSnapshot $page, ContentTypeState $type, TermState $term, StoreContext $store): array
+    {
+        $builder = $this->builder();
+        return $builder->build($page, $type, $term, $store, $builder->prepare($page));
+    }
+
+    /** @return array<string, mixed> */
     private function build(PageSnapshot $page): array
     {
-        return $this->builder()->build($page, new ContentTypeState(3, 'news', true), new TermState(9, 2, '1/4/9', [1, 4, 9], true), $this->store());
+        return $this->buildWith($page, new ContentTypeState(3, 'news', true), new TermState(9, 2, '1/4/9', [1, 4, 9], true), $this->store());
     }
 
     public function testTheDocumentHasEveryMappedFieldFromTheCurrentState(): void
@@ -129,7 +136,7 @@ class DocumentBuilderTest extends TestCase
 
     public function testTheClassificationFieldsComeFromTheTermState(): void
     {
-        $document = $this->builder()->build(
+        $document = $this->buildWith(
             $this->page('<p>x</p>'),
             new ContentTypeState(7, 'guides', true),
             new TermState(31, 2, '1/20/31', [1, 20, 31], true),
@@ -158,7 +165,7 @@ class DocumentBuilderTest extends TestCase
     #[DataProvider('urls')]
     public function testTheUrlIsBuiltFromTheStoreBaseUrlAndTheEncodedIdentifier(string $base, string $identifier, string $expected): void
     {
-        $document = $this->builder()->build(
+        $document = $this->buildWith(
             $this->page('<p>x</p>', $identifier),
             new ContentTypeState(3, 'news', true),
             new TermState(9, 2, '1/4/9', [1, 4, 9], true),
@@ -169,7 +176,7 @@ class DocumentBuilderTest extends TestCase
 
     public function testTheImageUsesTheMediaUrlOfTheStoreView(): void
     {
-        $document = $this->builder()->build(
+        $document = $this->buildWith(
             $this->page('<img src="{{media url=&quot;a/b c.jpg&quot;}}">'),
             new ContentTypeState(3, 'news', true),
             new TermState(9, 2, '1/4/9', [1, 4, 9], true),
@@ -196,9 +203,9 @@ class DocumentBuilderTest extends TestCase
 
     public function testTheMetaDescriptionSummaryIsPlainTextAndBounded(): void
     {
-        $meta = '<b>Bold</b> &amp; {{block id="x"}}clean <script>alert(1)</script> ' . str_repeat('word ', 100);
+        $meta = '<b>Bold</b> &amp; &lt;i&gt;enc&lt;/i&gt; {{block id="x"}}clean <script>alert(1)</script> ' . str_repeat('word ', 100);
         $summary = $this->build($this->page('<p>Body.</p>', 'x', $meta))['summary'];
-        $this->assertStringStartsWith('Bold & clean alert(1) word', $summary);
+        $this->assertStringStartsWith('Bold & enc clean alert(1) word', $summary);
         $this->assertStringNotContainsString('<', $summary);
         $this->assertStringNotContainsString('{{', $summary);
         $this->assertLessThanOrEqual(DocumentBuilder::SUMMARY_LENGTH + 1, mb_strlen($summary));
@@ -256,5 +263,44 @@ class DocumentBuilderTest extends TestCase
         $page = new PageSnapshot(5, 'x', 'T', '', '<p>x</p>', '', true, [2], null);
         $this->assertNull($this->build($page)['updated_at']);
     }
-}
 
+    public function testPreparedContentOfAnotherPageIsRefusedWithoutLeakingContent(): void
+    {
+        $builder = $this->builder();
+        $other = new PageSnapshot(6, 'x', 'T', '', '<p>PRIVATE-TEXT</p>', '', true, [2], null);
+        $prepared = $builder->prepare($other);
+        try {
+            $builder->build($this->page('<p>x</p>'), new ContentTypeState(3, 'news', true), new TermState(9, 2, '1/4/9', [1, 4, 9], true), $this->store(), $prepared);
+            $this->fail('a LogicException was expected');
+        } catch (\LogicException $e) {
+            $this->assertStringNotContainsString('PRIVATE', $e->getMessage());
+            $this->assertStringContainsString('6', $e->getMessage());
+        }
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function unsafeImages(): array
+    {
+        return [
+            'quote' => ['https://cdn.test/a".png'],
+            'angle bracket' => ['https://cdn.test/<a>.png'],
+            'space' => ['https://cdn.test/a b.png'],
+            'single quote' => ["https://cdn.test/a'.png"],
+        ];
+    }
+
+    #[DataProvider('unsafeImages')]
+    public function testAnAbsoluteImageUrlWithUnsafeCharactersIsDropped(string $url): void
+    {
+        $this->assertNull($this->build($this->page('<img src="' . htmlspecialchars($url, ENT_QUOTES) . '">'))['image']);
+    }
+
+    public function testTheConstructorOfTheBuilderRequiresTheExtractorAndTheLogger(): void
+    {
+        $parameters = (new \ReflectionClass(DocumentBuilder::class))->getConstructor()->getParameters();
+        $this->assertSame(['textExtractor', 'logger'], array_map(static fn ($p): string => $p->getName(), $parameters));
+        foreach ($parameters as $parameter) {
+            $this->assertFalse($parameter->isOptional() || $parameter->allowsNull());
+        }
+    }
+}
