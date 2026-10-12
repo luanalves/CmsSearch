@@ -52,6 +52,33 @@ class IndexNameResolverTest extends TestCase
         $this->assertNull($this->resolver()->parse($index));
     }
 
+    public function testOwnAliasesAreParsedToTheirStoreView(): void
+    {
+        $this->assertSame(12, $this->resolver()->parseAlias('magento2_thedevkitchen_cmssearch_12'));
+        $this->assertSame(65535, $this->resolver()->parseAlias('magento2_thedevkitchen_cmssearch_65535'));
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function nonAliases(): array
+    {
+        return [
+            'native product alias' => ['magento2_product_2'],
+            'another prefix' => ['other_thedevkitchen_cmssearch_2'],
+            'a version' => ['magento2_thedevkitchen_cmssearch_2_v1'],
+            'store 0' => ['magento2_thedevkitchen_cmssearch_0'],
+            'leading zero' => ['magento2_thedevkitchen_cmssearch_02'],
+            'wildcard' => ['magento2_thedevkitchen_cmssearch_*'],
+            'suffix' => ['magento2_thedevkitchen_cmssearch_2_build'],
+            'six digits' => ['magento2_thedevkitchen_cmssearch_100000'],
+        ];
+    }
+
+    #[DataProvider('nonAliases')]
+    public function testOnlyOurAliasNamesAreAliases(string $name): void
+    {
+        $this->assertNull($this->resolver()->parseAlias($name));
+    }
+
     /** @return array<string, array{0: ?string}> */
     public static function invalidPrefixes(): array
     {

@@ -47,6 +47,15 @@ class IndexNameResolver
         return ['store_id' => (int) $match[1], 'version' => (int) $match[2]];
     }
 
+    /**
+     * @return int|null the store view id of one of our aliases ({prefix}_thedevkitchen_cmssearch_{store_id}), else null
+     */
+    public function parseAlias(string $name): ?int
+    {
+        $pattern = '/^' . preg_quote($this->base(), '/') . '([1-9][0-9]{0,4})$/';
+        return preg_match($pattern, $name, $match) === 1 ? (int) $match[1] : null;
+    }
+
     private function base(): string
     {
         $prefix = strtolower(trim((string) $this->searchConfig->getIndexPrefix()));

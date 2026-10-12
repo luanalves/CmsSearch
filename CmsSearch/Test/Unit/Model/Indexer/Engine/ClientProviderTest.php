@@ -5,49 +5,87 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Test\Unit\Model\Indexer\Engine;
 
 use Magento\AdvancedSearch\Model\Client\ClientInterface;
+use Magento\AdvancedSearch\Model\Client\ClientResolver;
 use Magento\Elasticsearch\Model\Config as SearchConfig;
-use Magento\Elasticsearch\SearchAdapter\ConnectionManager;
 use Magento\OpenSearch\Model\SearchClient;
 use OpenSearch\Client;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Exception\IndexingException;
 use Thedevkitchen\CmsSearch\Model\Indexer\Engine\ClientProvider;
 
 class ClientProviderTest extends TestCase
 {
-    private function provider(ConnectionManager $manager, mixed $timeout = '15'): ClientProvider
+    private function provider(ClientResolver $resolver, mixed $timeout = '15'): ClientProvider
     {
         $config = $this->createMock(SearchConfig::class);
         $config->method('getElasticsearchConfigData')->willReturnMap([['server_timeout', null, $timeout]]);
-        return new ClientProvider($manager, $config);
+        return new ClientProvider($resolver, $config);
     }
 
-    public function testTheLowLevelClientOfTheNativeOpenSearchConnectionIsUsed(): void
+    private function resolver(string $engine = 'opensearch'): ClientResolver&MockObject
     {
-        $client = $this->createMock(Client::class);
+        $resolver = $this->createMock(ClientResolver::class);
+        $resolver->method('getCurrentEngine')->willReturn($engine);
+        return $resolver;
+    }
+
+    private function connection(Client $client): SearchClient
+    {
         $connection = $this->createMock(SearchClient::class);
         $connection->method('getOpenSearchClient')->willReturn($client);
-        $manager = $this->createMock(ConnectionManager::class);
-        $manager->expects($this->once())->method('getConnection')->willReturn($connection);
-        $this->assertSame($client, $this->provider($manager)->get());
+        return $connection;
+    }
+
+    public function testAnOwnClientIsBuiltByTheNativeResolverFromTheNativeConfigurationAndReused(): void
+    {
+        $client = $this->createMock(Client::class);
+        $resolver = $this->resolver();
+        $resolver->expects($this->once())->method('create')->willReturn($this->connection($client));
+        $provider = $this->provider($resolver);
+        $this->assertSame($client, $provider->get());
+        $this->assertSame($client, $provider->get());
+    }
+
+    public function testResetDiscardsTheClientSoTheNextCallGetsAFreshConnectionPool(): void
+    {
+        $first = $this->createMock(Client::class);
+        $second = $this->createMock(Client::class);
+        $resolver = $this->resolver();
+        $resolver->expects($this->exactly(2))->method('create')
+            ->willReturnOnConsecutiveCalls($this->connection($first), $this->connection($second));
+        $provider = $this->provider($resolver);
+        $this->assertSame($first, $provider->get());
+        $provider->reset();
+        $this->assertSame($second, $provider->get());
     }
 
     public function testAnotherSearchEngineIsAConfigurationError(): void
     {
-        $manager = $this->createMock(ConnectionManager::class);
-        $manager->method('getConnection')->willReturn($this->createMock(ClientInterface::class));
+        $resolver = $this->resolver('elasticsearch7');
+        $resolver->expects($this->never())->method('create');
         $this->expectException(IndexingException::class);
-        $this->expectExceptionMessage('CMS search needs the OpenSearch engine');
-        $this->provider($manager)->get();
+        $this->expectExceptionMessage('CMS search needs the OpenSearch engine (catalog/search/engine = opensearch); the configured engine is elasticsearch7.');
+        $this->provider($resolver)->get();
     }
 
-    public function testAnUnreachableConnectionIsAnIndexingError(): void
+    public function testAClientOfAnotherKindIsAConfigurationError(): void
     {
-        $manager = $this->createMock(ConnectionManager::class);
-        $manager->method('getConnection')->willThrowException(new \RuntimeException('Search client is not set.'));
+        $resolver = $this->resolver();
+        $resolver->method('create')->willReturn($this->createMock(ClientInterface::class));
         $this->expectException(IndexingException::class);
-        $this->expectExceptionMessage('The OpenSearch connection is not available: Search client is not set.');
-        $this->provider($manager)->get();
+        $this->expectExceptionMessage('CMS search needs the OpenSearch engine');
+        $this->provider($resolver)->get();
+    }
+
+    public function testAnUnusableConnectionIsAnIndexingError(): void
+    {
+        $resolver = $this->resolver();
+        $resolver->method('create')->willThrowException(new \RuntimeException('The search failed because of a search engine misconfiguration.'));
+        $this->expectException(IndexingException::class);
+        $this->expectExceptionMessage('The OpenSearch connection is not available: The search failed because of a search engine misconfiguration.');
+        $this->provider($resolver)->get();
     }
 
     /**
@@ -66,11 +104,11 @@ class ClientProviderTest extends TestCase
     }
 
     /**
-     * @dataProvider timeouts
      * @param array{timeout: int, connect_timeout: int} $expected
      */
+    #[DataProvider('timeouts')]
     public function testEveryRequestHasBoundedTimeoutsDerivedFromTheNativeSetting(mixed $configured, array $expected): void
     {
-        $this->assertSame($expected, $this->provider($this->createMock(ConnectionManager::class), $configured)->getRequestOptions());
+        $this->assertSame($expected, $this->provider($this->resolver(), $configured)->getRequestOptions());
     }
 }

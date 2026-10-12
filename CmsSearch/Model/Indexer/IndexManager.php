@@ -4,25 +4,56 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\Indexer;
 
+use Magento\Store\Model\StoreManagerInterface;
+use OpenSearch\Common\Exceptions\NoNodesAvailableException;
+use OpenSearch\Common\Exceptions\TransportException;
 use OpenSearch\Exception\NotFoundHttpException;
+use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Exception\IndexingException;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
 use Thedevkitchen\CmsSearch\Model\Indexer\Engine\ClientProvider;
 
 /**
  * The only class that writes to OpenSearch. Searches read the alias of a store view; writes go through the alias
- * (incremental) or into a new version that replaces it atomically (full rebuild). Only indices recognised by
- * IndexNameResolver::parse() are ever changed or deleted.
+ * (incremental) or through the "build alias" ({version}_build) of a new version that replaces it atomically (full
+ * rebuild). Every write uses require_alias=true: the cluster auto-creates indices (action.auto_create_index=true),
+ * so a write into a version deleted meanwhile (e.g. by a concurrent --sync) fails instead of creating a
+ * dynamically mapped index. Only indices recognised by IndexNameResolver::parse() are ever changed or deleted.
  *
  * Every OpenSearch failure surfaces as IndexingException (transient for the reindex handler) whose message never
- * quotes document content: OpenSearch error reasons can echo field values, so they are cut before such parts.
+ * quotes document content and which never chains the raw OpenSearch exception (its message is the response body).
+ * A transport failure (dead node, timeout, connection error) is retried once with a fresh client.
+ *
+ * Mapping upgrades (IndexDefinition::MAPPING_VERSION): ensureAlias() only WARNS about an index with another mapping
+ * version or locale, it never recreates one. Path: stop the consumers; deploy the code with MAPPING_VERSION + 1; for
+ * purely additive properties a future ensureMapping() would PUT {alias}/_mapping with the new properties, any other
+ * change needs `bin/magento thedevkitchen:cmssearch:reindex --sync`; start the consumers; publish the page reindex
+ * (`thedevkitchen:cmssearch:reindex --entity=page`).
  */
 class IndexManager
 {
+    public const MODULE = 'Thedevkitchen_CmsSearch';
+    public const BUILD_ALIAS_SUFFIX = '_build';
+
     private const MAX_ERROR_LENGTH = 300;
+    private const MAX_LOGGED_FAILURES = 20;
 
     /**
-     * Parts of OpenSearch error texts that quote the indexed values; everything from the first marker on is dropped.
+     * Item error types whose reason names indices/fields/limits but never a document value; the reason of any other
+     * type is left out (type and status only).
+     */
+    private const VALUE_FREE_REASON_TYPES = [
+        'strict_dynamic_mapping_exception',
+        'index_not_found_exception',
+        'cluster_block_exception',
+        'index_closed_exception',
+        'es_rejected_execution_exception',
+        'version_conflict_engine_exception',
+    ];
+
+    /**
+     * Second layer: parts of OpenSearch error texts that quote indexed values; everything from the first marker on
+     * is dropped.
      */
     private const CONTENT_MARKERS = [
         "Preview of field's value",
@@ -31,10 +62,15 @@ class IndexManager
         'For input string',
     ];
 
+    /** @var array<string, true> aliases whose mapping was checked by this process */
+    private array $checkedAliases = [];
+
     public function __construct(
         private readonly ClientProvider $clientProvider,
         private readonly IndexNameResolver $names,
-        private readonly IndexDefinition $definition
+        private readonly IndexDefinition $definition,
+        private readonly StoreManagerInterface $storeManager,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -46,19 +82,20 @@ class IndexManager
     {
         $alias = $this->names->getAlias($store->getStoreId());
         if ($this->aliasExists($alias)) {
+            $this->warnAboutOutdatedMapping($store, $alias);
             return $alias;
         }
         $index = $this->names->getVersionName($store->getStoreId(), $this->nextVersion($store->getStoreId()));
         $body = $this->definition->build($store);
         $body['aliases'] = [$alias => new \stdClass()];
         try {
-            $this->clientProvider->get()->indices()->create($this->params(['index' => $index, 'body' => $body]));
-        } catch (\Throwable $exception) {
+            $this->call('create ' . $index, fn () => $this->clientProvider->get()->indices()->create(
+                $this->params(['index' => $index, 'body' => $body])
+            ));
+        } catch (IndexingException $exception) {
             if (!$this->aliasExists($alias)) { // another consumer may have won the race
                 throw new IndexingException(
-                    sprintf('Could not create the CMS search index %s: %s', $index, $this->describe($exception)),
-                    0,
-                    $exception
+                    sprintf('Could not create the CMS search index %s: %s', $index, $exception->getMessage())
                 );
             }
         }
@@ -66,13 +103,14 @@ class IndexManager
     }
 
     /**
-     * @return string a new, empty version for a full rebuild (no alias yet)
+     * @return string a new, empty version for a full rebuild; it only carries its own build alias until switchAlias()
      * @throws IndexingException
      */
     public function createIndex(StoreContext $store): string
     {
         $index = $this->names->getVersionName($store->getStoreId(), $this->nextVersion($store->getStoreId()));
         $body = $this->definition->build($store);
+        $body['aliases'] = [$this->buildAlias($index) => new \stdClass()];
         $this->call('create ' . $index, fn () => $this->clientProvider->get()->indices()->create(
             $this->params(['index' => $index, 'body' => $body])
         ));
@@ -80,13 +118,21 @@ class IndexManager
     }
 
     /**
+     * @param string $target incremental: the alias of a store view; full rebuild: a version from createIndex()
      * @param list<array{action: string, id: string, document?: array<string, mixed>}> $operations
-     * @param bool $incremental true: $target is an alias; the write must hit an existing alias and be searchable when
-     *                          this returns (refresh=wait_for); false: $target is a new version being filled
+     * @param bool $incremental true: the write must hit the existing alias and be searchable when this returns
+     *                          (refresh=wait_for); false: the version is filled through its build alias, no refresh
      * @throws IndexingException|\InvalidArgumentException
      */
     public function bulk(string $target, array $operations, bool $incremental): void
     {
+        if ($incremental ? $this->names->parseAlias($target) === null : $this->names->parse($target) === null) {
+            throw new \InvalidArgumentException(sprintf(
+                '%s is not %s.',
+                $target,
+                $incremental ? 'the alias of a CMS search index' : 'a CMS search index version'
+            ));
+        }
         if ($operations === []) {
             return;
         }
@@ -110,16 +156,20 @@ class IndexManager
                 throw new \InvalidArgumentException(sprintf('Unknown bulk action "%s".', (string) $action));
             }
         }
-        $params = ['index' => $target, 'body' => $body];
+        $params = [
+            'index' => $incremental ? $target : $this->buildAlias($target),
+            'body' => $body,
+            'require_alias' => 'true',
+        ];
         if ($incremental) {
             $params['refresh'] = 'wait_for';
-            $params['require_alias'] = 'true';
         }
         $response = $this->call('bulk ' . $target, fn () => $this->clientProvider->get()->bulk($this->params($params)));
         if (is_array($response) && empty($response['errors'])) {
             return;
         }
         $failures = [];
+        $first = null;
         foreach ((is_array($response) ? (array) ($response['items'] ?? []) : []) as $item) {
             $action = (string) array_key_first((array) $item);
             $result = (array) ($item[$action] ?? []);
@@ -129,45 +179,60 @@ class IndexManager
                 continue;
             }
             $error = $result['error'];
-            $failures[] = sprintf(
-                '%s %s: %s',
-                $action,
-                (string) ($result['_id'] ?? '?'),
-                is_array($error)
-                    ? trim((string) ($error['type'] ?? '') . ' ' . (string) ($error['reason'] ?? ''))
-                    : (string) $error
-            );
+            $type = is_array($error) && is_string($error['type'] ?? null) ? $error['type'] : 'unknown';
+            $failure = [
+                'action' => $action,
+                'id' => (string) ($result['_id'] ?? '?'),
+                'status' => (int) ($result['status'] ?? 0),
+                'type' => $type,
+            ];
+            $failures[] = $failure;
+            if ($first === null) {
+                $reason = is_array($error) && in_array($type, self::VALUE_FREE_REASON_TYPES, true)
+                    ? trim((string) ($error['reason'] ?? ''))
+                    : '';
+                $first = sprintf('%s %s (%d %s)', $failure['action'], $failure['id'], $failure['status'], $type)
+                    . ($reason !== '' ? ': ' . $reason : '');
+            }
         }
-        if ($failures === []) {
+        if ($first === null) {
             throw new IndexingException(sprintf(
                 'The bulk request on %s reported errors without a failed item.',
                 $target
             ));
         }
-        throw new IndexingException(sprintf(
-            '%d of %d bulk operation(s) failed on %s; first: %s',
-            count($failures),
-            count($operations),
-            $target,
-            $this->sanitize($failures[0])
-        ));
+        $summary = sprintf('%d of %d bulk operation(s) failed on %s', count($failures), count($operations), $target);
+        $this->logger->warning(
+            $summary,
+            ['target' => $target, 'failures' => array_slice($failures, 0, self::MAX_LOGGED_FAILURES)]
+        );
+        throw new IndexingException($summary . '; first: ' . $this->sanitize($first));
     }
 
     /**
-     * @throws IndexingException
-     */
-    public function refresh(string $index): void
-    {
-        $this->call('refresh ' . $index, fn () => $this->clientProvider->get()->indices()->refresh(
-            $this->params(['index' => $index])
-        ));
-    }
-
-    /**
-     * Points the store view's alias at $newIndex in one atomic _aliases call, then deletes the store's other versions.
-     *
-     * @return list<string> deleted index names
+     * @param string $target one of our versions or aliases
      * @throws IndexingException|\InvalidArgumentException
+     */
+    public function refresh(string $target): void
+    {
+        if ($this->names->parse($target) === null && $this->names->parseAlias($target) === null) {
+            throw new \InvalidArgumentException(sprintf('%s is not a CMS search index or alias.', $target));
+        }
+        $this->call('refresh ' . $target, fn () => $this->clientProvider->get()->indices()->refresh(
+            $this->params(['index' => $target])
+        ));
+    }
+
+    /**
+     * Points the store view's alias at $newIndex (which must carry this module's current strict mapping) in one atomic
+     * _aliases call, also removing its build alias, then deletes the store's other versions (including an unfinished
+     * rebuild of a concurrent --sync, whose next bulk then fails on its vanished build alias).
+     *
+     * Once the alias has moved this method NEVER throws: a version that could not be deleted is logged and returned
+     * in "leftovers" (the next --sync removes it). An exception therefore always means "the alias did not move".
+     *
+     * @return array{deleted: list<string>, leftovers: list<string>}
+     * @throws IndexingException|\InvalidArgumentException only before or instead of the swap
      */
     public function switchAlias(StoreContext $store, string $newIndex): array
     {
@@ -183,6 +248,7 @@ class IndexManager
         if (!isset($versions[$newIndex])) {
             throw new IndexingException(sprintf('The CMS search index %s does not exist.', $newIndex));
         }
+        $this->assertCurrentMapping($newIndex);
         $actions = [];
         foreach ($versions as $index => $info) {
             if ($index !== $newIndex && in_array($alias, $info['aliases'], true)) {
@@ -190,20 +256,52 @@ class IndexManager
             }
         }
         $actions[] = ['add' => ['index' => $newIndex, 'alias' => $alias]];
-        $this->call('alias switch ' . $alias, fn () => $this->clientProvider->get()->indices()->updateAliases(
-            $this->params(['body' => ['actions' => $actions]])
-        ));
+        if (in_array($this->buildAlias($newIndex), $versions[$newIndex]['aliases'], true)) {
+            $actions[] = ['remove' => ['index' => $newIndex, 'alias' => $this->buildAlias($newIndex)]];
+        }
+        try {
+            $this->call('alias switch ' . $alias, fn () => $this->clientProvider->get()->indices()->updateAliases(
+                $this->params(['body' => ['actions' => $actions]])
+            ));
+        } catch (IndexingException $exception) {
+            if (!$this->servesOnly($alias, $newIndex)) {
+                throw $exception;
+            }
+            $this->logger->warning(sprintf(
+                'The alias switch of %s reported a failure but %s already serves it: %s',
+                $alias,
+                $newIndex,
+                $exception->getMessage()
+            ));
+        }
         $deleted = [];
+        $leftovers = [];
         foreach ($versions as $index => $info) {
-            if ($index !== $newIndex && $info['store_id'] === $storeId) {
+            if ($index === $newIndex || $info['store_id'] !== $storeId) {
+                continue;
+            }
+            try {
                 $this->delete($index);
                 $deleted[] = $index;
+            } catch (IndexingException $exception) {
+                $leftovers[] = $index;
+                $this->logger->warning(sprintf(
+                    'The alias %s now serves %s, but the old version %s could not be deleted (the next --sync '
+                    . 'removes it): %s',
+                    $alias,
+                    $newIndex,
+                    $index,
+                    $exception->getMessage()
+                ));
             }
         }
-        return $deleted;
+        return ['deleted' => $deleted, 'leftovers' => $leftovers];
     }
 
     /**
+     * Drops one of our versions, never one that serves a search alias (only its own build alias is allowed).
+     * A missing index is a no-op.
+     *
      * @throws IndexingException|\InvalidArgumentException
      */
     public function dropIndex(string $index): void
@@ -211,19 +309,43 @@ class IndexManager
         if ($this->names->parse($index) === null) {
             throw new \InvalidArgumentException(sprintf('%s is not a CMS search index.', $index));
         }
+        $response = $this->call('aliases of ' . $index, function () use ($index) {
+            try {
+                return $this->clientProvider->get()->indices()->getAlias($this->params(['index' => $index]));
+            } catch (NotFoundHttpException) {
+                return null;
+            }
+        });
+        if ($response === null) {
+            return;
+        }
+        $aliases = array_map('strval', array_keys((array) ($response[$index]['aliases'] ?? [])));
+        $held = array_values(array_diff($aliases, [$this->buildAlias($index)]));
+        if ($held !== []) {
+            throw new IndexingException(
+                sprintf('%s is live (alias %s) and is not dropped.', $index, implode(', ', $held))
+            );
+        }
         $this->delete($index);
     }
 
     /**
-     * @param int[] $existingStoreIds every store view that exists (never empty: that would drop every index)
-     * @return list<string> dropped indices of store views that no longer exist
-     * @throws IndexingException|\InvalidArgumentException
+     * Drops the indices of store views that no longer exist, judged against the complete store list.
+     *
+     * @return list<string> dropped indices
+     * @throws IndexingException
      */
-    public function dropOrphans(array $existingStoreIds): array
+    public function dropOrphans(): array
     {
-        $existing = array_values(array_filter(array_map('intval', $existingStoreIds), static fn (int $id): bool => $id > 0));
+        $existing = [];
+        foreach ($this->storeManager->getStores(false) as $store) {
+            $id = (int) $store->getId();
+            if ($id > 0) {
+                $existing[] = $id;
+            }
+        }
         if ($existing === []) {
-            throw new \InvalidArgumentException('Orphan cleanup needs the ids of the existing store views.');
+            throw new IndexingException('No store view was found; the orphan cleanup drops nothing.');
         }
         $dropped = [];
         foreach ($this->versions() as $index => $info) {
@@ -235,11 +357,92 @@ class IndexManager
         return $dropped;
     }
 
+    private function buildAlias(string $index): string
+    {
+        return $index . self::BUILD_ALIAS_SUFFIX;
+    }
+
     private function aliasExists(string $alias): bool
     {
         return (bool) $this->call('alias check ' . $alias, fn () => $this->clientProvider->get()->indices()->existsAlias(
             $this->params(['name' => $alias])
         ));
+    }
+
+    /**
+     * Logs (once per alias and process) when the live index was built with another mapping version or locale.
+     */
+    private function warnAboutOutdatedMapping(StoreContext $store, string $alias): void
+    {
+        if (isset($this->checkedAliases[$alias])) {
+            return;
+        }
+        $this->checkedAliases[$alias] = true;
+        try {
+            $response = $this->call('mapping ' . $alias, fn () => $this->clientProvider->get()->indices()->getMapping(
+                $this->params(['index' => $alias])
+            ));
+        } catch (IndexingException $exception) {
+            $this->logger->warning(sprintf('The mapping of %s could not be checked: %s', $alias, $exception->getMessage()));
+            return;
+        }
+        foreach ((array) $response as $index => $data) {
+            $meta = (array) ($data['mappings']['_meta'] ?? []);
+            $version = $meta['mapping_version'] ?? null;
+            $locale = $meta['locale'] ?? null;
+            if ($version !== IndexDefinition::MAPPING_VERSION || $locale !== $store->getLocale()) {
+                $this->logger->warning(sprintf(
+                    'The CMS search index %s (alias %s) has mapping_version %s and locale %s; this code expects %d '
+                    . 'and %s. Run bin/magento thedevkitchen:cmssearch:reindex --sync.',
+                    (string) $index,
+                    $alias,
+                    is_scalar($version) ? (string) $version : 'none',
+                    is_scalar($locale) ? (string) $locale : 'none',
+                    IndexDefinition::MAPPING_VERSION,
+                    $store->getLocale()
+                ));
+            }
+        }
+    }
+
+    /**
+     * @throws IndexingException when $index was not created with this module's current strict mapping (for example
+     *                           an index auto-created by a stray write)
+     */
+    private function assertCurrentMapping(string $index): void
+    {
+        $response = $this->call('mapping ' . $index, fn () => $this->clientProvider->get()->indices()->getMapping(
+            $this->params(['index' => $index])
+        ));
+        $mapping = (array) ($response[$index]['mappings'] ?? []);
+        $meta = (array) ($mapping['_meta'] ?? []);
+        if (($mapping['dynamic'] ?? null) !== 'strict'
+            || ($meta['module'] ?? null) !== self::MODULE
+            || ($meta['mapping_version'] ?? null) !== IndexDefinition::MAPPING_VERSION
+        ) {
+            throw new IndexingException(sprintf(
+                '%s does not have the current CMS search mapping (module %s, mapping_version %d, dynamic strict); '
+                . 'it is not made live.',
+                $index,
+                self::MODULE,
+                IndexDefinition::MAPPING_VERSION
+            ));
+        }
+    }
+
+    private function servesOnly(string $alias, string $index): bool
+    {
+        try {
+            $versions = $this->versions();
+        } catch (IndexingException) {
+            return false;
+        }
+        foreach ($versions as $name => $info) {
+            if (in_array($alias, $info['aliases'], true) !== ($name === $index)) {
+                return false;
+            }
+        }
+        return isset($versions[$index]);
     }
 
     /**
@@ -300,23 +503,38 @@ class IndexManager
     }
 
     /**
-     * Runs one OpenSearch request; any failure (unreachable cluster, timeout, HTTP error) becomes an IndexingException.
+     * Runs one OpenSearch request; a transport failure is retried once with a fresh client (every request of this
+     * class is idempotent); any other or repeated failure becomes an IndexingException without the raw exception.
      *
      * @throws IndexingException
      */
     private function call(string $what, callable $request): mixed
     {
-        try {
-            return $request();
-        } catch (IndexingException $exception) {
-            throw $exception;
-        } catch (\Throwable $exception) {
-            throw new IndexingException(
-                sprintf('OpenSearch request failed (%s): %s', $what, $this->describe($exception)),
-                0,
-                $exception
-            );
+        for ($attempt = 1;; $attempt++) {
+            try {
+                return $request();
+            } catch (IndexingException $exception) {
+                throw $exception;
+            } catch (\Throwable $exception) {
+                if ($attempt === 1 && $this->isTransportFailure($exception)) {
+                    $this->logger->warning(sprintf(
+                        'OpenSearch request (%s) failed with %s; retrying once with a new client.',
+                        $what,
+                        $exception::class
+                    ));
+                    $this->clientProvider->reset();
+                    continue;
+                }
+                throw new IndexingException(
+                    sprintf('OpenSearch request failed (%s): %s', $what, $this->describe($exception))
+                );
+            }
         }
+    }
+
+    private function isTransportFailure(\Throwable $exception): bool
+    {
+        return $exception instanceof NoNodesAvailableException || $exception instanceof TransportException;
     }
 
     private function describe(\Throwable $exception): string
