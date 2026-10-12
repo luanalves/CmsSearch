@@ -12,7 +12,8 @@ final class ExtractedContent
     public function __construct(
         private readonly string $text,
         private readonly array $directives,
-        private readonly ?string $firstImage
+        private readonly ?string $firstImage,
+        private readonly bool $truncated = false
     ) {
     }
 
@@ -30,9 +31,15 @@ final class ExtractedContent
         return $this->directives;
     }
 
-    /** Raw src of the first <img> of the content (may be a {{media}} directive). */
+    /** Raw src of the first visible <img> of the content (may be a {{media}} directive). */
     public function getFirstImage(): ?string
     {
         return $this->firstImage;
+    }
+
+    /** True when the input exceeded TextExtractor::MAX_INPUT_BYTES or the text exceeded TextExtractor::MAX_TEXT_CHARS. */
+    public function isTruncated(): bool
+    {
+        return $this->truncated;
     }
 }

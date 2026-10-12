@@ -56,6 +56,10 @@ class TextExtractorTest extends TestCase
                 'utf8', 'Promoções de verão: até 50% em informática — “ofertas” válidas já. Emoji 🎉 e símbolos © ®',
             ],
             'style, script, noscript, comment and template are not text' => ['style-script', 'Visible text'],
+            'hidden by Page Builder style rules, inline style and the hidden attribute' => [
+                'hidden',
+                'Visible column copy Mobile only hidden stays visible on desktop Aria hidden is still visible text Visible control',
+            ],
         ];
     }
 
@@ -177,15 +181,105 @@ class TextExtractorTest extends TestCase
     public function testVeryLargeAndDeeplyNestedContentIsExtractedWithoutFailure(): void
     {
         $html = str_repeat('<div>', 400) . '<p>deep</p>' . str_repeat('</div>', 400)
-            . str_repeat('<p>word ' . str_repeat('x', 50) . '</p>', 20000);
+            . str_repeat('<p>word ' . str_repeat('x', 50) . '</p>', 4000);
         $text = $this->extractor->extract($html)->getText();
         $this->assertStringStartsWith('deep word', $text);
-        $this->assertSame(20000, substr_count($text, 'word'));
+        $this->assertSame(4000, substr_count($text, 'word'));
     }
 
     public function testUnclosedTagsAndGarbageDoNotLeakWarnings(): void
     {
         $text = $this->extractor->extract('<p>open <b>bold <i>x</p></div><td>cell<<>>&bogus; {{unclosed')->getText();
         $this->assertStringContainsString('open bold x', $text);
+    }
+
+    public function testHiddenContentExposesNeitherDirectivesNorImages(): void
+    {
+        $content = $this->extractor->extract($this->fixture('hidden'));
+        $this->assertSame([], $content->getDirectives());
+        $this->assertNull($content->getFirstImage());
+    }
+
+    public function testCommentedNoscriptTemplateAndScriptContentIsNotExposed(): void
+    {
+        $html = '<!-- <p>{{widget type="Magento\Cms\Block\Widget\Block" block_id="1"}}<img src="{{media url=c.jpg}}"></p> -->'
+            . '<noscript>{{block id="n"}}<img src="n.jpg"></noscript><template>{{block id="t"}}</template>'
+            . '<script>var a = "{{block id=\"s\"}}";</script><style>/* {{block id="st"}} */</style>'
+            . '<p>shown</p>{{block id="real"}}';
+        $content = $this->extractor->extract($html);
+        $this->assertSame('shown', $content->getText());
+        $this->assertSame(['real'], array_map(static fn (Directive $d): ?string => $d->getParam('id'), $content->getDirectives()));
+        $this->assertNull($content->getFirstImage());
+    }
+
+    public function testTheFirstImageIsTheFirstVisibleOne(): void
+    {
+        $html = '<div hidden><img src="hidden.jpg"></div><!-- <img src="comment.jpg"> --><img src="shown.jpg">';
+        $this->assertSame('shown.jpg', $this->extractor->extract($html)->getFirstImage());
+    }
+
+    public function testAnUnclosedDirectiveWithAHugeTailDoesNotEmptyTheText(): void
+    {
+        foreach (['<p>{{a ', '<p>{{widget type="x" ', '<p>' . str_repeat('{{a ', 60000)] as $prefix) {
+            $content = $this->extractor->extract($prefix . str_repeat('ab ', 300000));
+            $this->assertStringContainsString('ab ab ab', $content->getText());
+            $this->assertNotSame('', $content->getText());
+            $this->assertSame([], $content->getDirectives());
+        }
+    }
+
+    public function testManyDirectivesAndAHugeSingleDirectiveAreParsedLinearly(): void
+    {
+        $many = str_repeat('{{store url="x"}} ', 30000) . '<p>end</p>';
+        $content = $this->extractor->extract($many);
+        $this->assertSame('end', $content->getText());
+        $this->assertCount(1, $content->getDirectives());
+        $huge = $this->extractor->extract('<p>a</p>{{widget note="' . str_repeat('y', 900000) . '" id="9"}}');
+        $this->assertSame('a', $huge->getText());
+        $this->assertSame('9', $huge->getDirectives()[0]->getParam('id'));
+    }
+
+    public function testInputAboveTheCapIsCutAtAUtf8BoundaryAndFlagged(): void
+    {
+        $this->assertSame(1048576, TextExtractor::MAX_INPUT_BYTES);
+        // markup without text, then 3-byte characters: the cap falls INSIDE the 22 859th character
+        $html = str_repeat('<b></b>', 140000) . str_repeat('€', 40000);
+        $content = $this->extractor->extract($html);
+        $this->assertTrue($content->isTruncated());
+        $this->assertSame(str_repeat('€', 22858), $content->getText());
+    }
+
+    public function testDirectivesBeyondTheInputCapAreNotScanned(): void
+    {
+        $html = '<p>' . str_repeat('a ', 600000) . '</p>{{block id="late"}}';
+        $content = $this->extractor->extract($html);
+        $this->assertTrue($content->isTruncated());
+        $this->assertSame([], $content->getDirectives());
+    }
+
+    public function testCollectedTextStopsAtTheTextCapAndIsFlagged(): void
+    {
+        $content = $this->extractor->extract(str_repeat('<p>' . str_repeat('w', 99) . '</p>', 9000));
+        $this->assertTrue($content->isTruncated());
+        $this->assertLessThan(TextExtractor::MAX_TEXT_CHARS + 5000, mb_strlen($content->getText()));
+        $this->assertGreaterThanOrEqual(TextExtractor::MAX_TEXT_CHARS, mb_strlen($content->getText()));
+        $small = $this->extractor->extract('<p>small</p>');
+        $this->assertFalse($small->isTruncated());
+    }
+
+    public function testAFailedRegularExpressionThrowsInsteadOfYieldingEmptyText(): void
+    {
+        // separate process: compiled patterns (and the JIT setting) are cached per process
+        $root = dirname(__DIR__, 8);
+        $script = 'require ' . var_export($root . '/app/code/Thedevkitchen/CmsSearch/Model/Indexer/Text/Directive.php', true) . ';'
+            . 'require ' . var_export($root . '/app/code/Thedevkitchen/CmsSearch/Model/Indexer/Text/ExtractedContent.php', true) . ';'
+            . 'require ' . var_export($root . '/app/code/Thedevkitchen/CmsSearch/Model/Indexer/TextExtractor.php', true) . ';'
+            . 'try { (new Thedevkitchen\\CmsSearch\\Model\\Indexer\\TextExtractor())'
+            . '->extract("<p>" . str_repeat("word  ", 500) . "</p>"); echo "NO EXCEPTION"; }'
+            . 'catch (UnexpectedValueException $e) { echo $e->getMessage(); }';
+        $output = (string) shell_exec(
+            escapeshellarg(PHP_BINARY) . ' -d pcre.jit=0 -d pcre.backtrack_limit=1 -r ' . escapeshellarg($script) . ' 2>&1'
+        );
+        $this->assertMatchesRegularExpression('/^Text extraction failed \(regular expression error \d+\)\.$/', $output);
     }
 }
