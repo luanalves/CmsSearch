@@ -7,6 +7,8 @@ namespace Thedevkitchen\CmsSearch\Model\Indexer;
 use Magento\Cms\Api\Data\PageInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\EntityManager\MetadataPool;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
+use Magento\Staging\Model\VersionHistoryInterface;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\PageSnapshot;
 
 /**
@@ -25,7 +27,8 @@ class ShadowedPageReader
 
     public function __construct(
         private readonly ResourceConnection $resource,
-        private readonly MetadataPool $metadataPool
+        private readonly MetadataPool $metadataPool,
+        private readonly VersionHistoryInterface $versionHistory
     ) {
     }
 
@@ -103,6 +106,12 @@ class ShadowedPageReader
         if ($ids === []) {
             return [];
         }
+        // runs before any PageSnapshotReader::read() of the message: reload the Staging version a long-lived consumer
+        // has cached, so the Staging select renderer compares the CURRENT rows (read() needs no reset: it always
+        // follows a snapshot read, which resets it)
+        if ($this->versionHistory instanceof ResetAfterRequestInterface) {
+            $this->versionHistory->_resetState();
+        }
         $metadata = $this->metadataPool->getMetadata(PageInterface::class);
         $linkField = $metadata->getLinkField();
         $idField = $metadata->getIdentifierField();
@@ -127,5 +136,44 @@ class ShadowedPageReader
         $siblings = array_values(array_diff(array_unique(array_map('intval', $connection->fetchCol($select))), $ids));
         sort($siblings);
         return $siblings;
+    }
+
+    /**
+     * Producer side of the shadow rule (Observer\PublishPageReindex): the ACTIVE pages of All Store Views (store 0)
+     * with one of the given URL keys, other than $exceptPageId. Used when a page leaves a URL key (rename or delete),
+     * which the consumer can no longer resolve from the page's current row. One query on the indexed identifier.
+     * Runs inside the page save/delete transaction, where Staging may have set the version being saved: the version
+     * state is deliberately NOT reset here.
+     *
+     * @param array<string> $identifiers
+     * @return list<int> ascending page ids
+     */
+    public function activeStoreZeroPagesNamed(array $identifiers, int $exceptPageId): array
+    {
+        $keys = array_values(array_unique(array_filter(array_map('strval', $identifiers), static fn (string $key): bool => $key !== '')));
+        sort($keys);
+        if ($keys === []) {
+            return [];
+        }
+        $metadata = $this->metadataPool->getMetadata(PageInterface::class);
+        $linkField = $metadata->getLinkField();
+        $idField = $metadata->getIdentifierField();
+        $connection = $this->resource->getConnection();
+        $select = $connection->select()
+            ->from(['p' => $this->resource->getTableName($metadata->getEntityTable())], [])
+            ->join(
+                ['ps' => $this->resource->getTableName(self::STORE_TABLE)],
+                sprintf('ps.%1$s = p.%1$s', $linkField),
+                []
+            )
+            ->columns(['page_id' => 'p.' . $idField])
+            ->where('p.identifier IN (?)', $keys)
+            ->where('ps.store_id = ?', 0)
+            ->where('p.is_active = ?', 1)
+            ->where(sprintf('p.%s <> ?', $idField), $exceptPageId)
+            ->distinct();
+        $ids = array_values(array_diff(array_unique(array_map('intval', $connection->fetchCol($select))), [$exceptPageId]));
+        sort($ids);
+        return $ids;
     }
 }

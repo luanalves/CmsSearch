@@ -138,12 +138,13 @@ class PageReindexProcessorTest extends TestCase
 
     public function testThePageOfAllStoreViewsThatAChangedPageShadowsIsReindexedToo(): void
     {
-        // page 11 (`home`, store view 2) changed: page 2 (`home`, store 0) is served or hidden in store view 2 by it
+        // page 11 (`home`, store view 2) was saved (e.g. disabled): page 2 (`home`, store 0) is served or hidden in
+        // store view 2 by it. (A deleted page has no row left to name siblings: the producer covers that case.)
         $this->affected->method('resolve')->willReturn([[11]]);
         $this->shadows->expects($this->once())->method('siblingsOf')->with([11])->willReturn([2]);
         $this->stores->method('all')->willReturn([$this->store(1, 1), $this->store(2)]);
         $this->recordReindex();
-        $this->processor()->process(new ReindexMessage('page', 11, 'delete', 1));
+        $this->processor()->process(new ReindexMessage('page', 11, 'save', 1));
         $this->assertSame([[[2, 11], [1, 2]]], $this->calls);
     }
 

@@ -19,6 +19,7 @@ use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
 use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied;
+use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
 use Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
@@ -218,7 +219,7 @@ class DiPreferencesContractTest extends TestCase
             [ReindexPublisher::class],
             $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\ReindexPublisherInterface"]/@type'))
         );
-        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class, PageReindexProcessor::class] as $class) {
+        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class, PageReindexProcessor::class, PublishPageReindex::class] as $class) {
             $this->assertSame(
                 [self::LOGGER],
                 $names($di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),

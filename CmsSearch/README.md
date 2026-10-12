@@ -49,7 +49,7 @@ Every write that can change what the search shows asks for an asynchronous reind
 | Exchange | `thedevkitchen.cmssearch` (topic) |
 | Dead-letter exchange / routing key | `thedevkitchen.cmssearch.dlx` / `thedevkitchen.cmssearch.reindex.dead` (the main queue's `x-dead-letter-*` arguments, declared in the binding arguments of `etc/queue_topology.xml`) |
 | Dead-letter queue (DLQ) | `thedevkitchen.cmssearch.reindex.dlq` (nothing consumes it) |
-| Log | `var/log/cmssearch_reindex.log`: `processed`, `retry scheduled`, `dead-lettered ...`, `publish failed`, `reindex request dropped` |
+| Log | `var/log/cmssearch_reindex.log`: per message (DEBUG) `reindexed <type> <id> (<action>): N page(s), S store view(s), U upserted, D deleted` and `processed {json}`; `retry scheduled`, `dead-lettered ...`, `publish failed`, `reindex request dropped`, `shadowed store-0 pages of page N not looked up` (ids and counts only, never content) |
 | Setting | Stores > Configuration > Thedevkitchen > CMS Search > Reindex Queue > Maximum Attempts (`thedevkitchen_cmssearch/queue/max_attempts`, default 3, whole number 1-10, global); ACL `Thedevkitchen_CmsSearch::config` |
 
 Exclusive: nothing else binds, publishes or consumes these names (unit contract `Test/Unit/Queue/QueueTopologyContractTest` scans `vendor` and `app/code`; `integration/test_cms_search_queue.sh` checks the broker).
@@ -71,10 +71,12 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 
 ### Consumer, retry and DLQ
 
-- Handler `Model\Queue\ReindexHandler::process`; the work is delegated to `Model\Queue\ReindexProcessorInterface` (Plan 3 binds `NullReindexProcessor`, which does nothing; Plan 4 replaces the preference in `etc/di.xml`).
+- Handler `Model\Queue\ReindexHandler::process`; the work is delegated to `Model\Queue\ReindexProcessorInterface`, bound in `etc/di.xml` to `Model\Queue\PageReindexProcessor` (Plan 4): it resolves the affected pages (`AffectedPages`, streamed in chunks of 1000), the store views (the message store view or all, restricted to the message website for terms), adds the store-0 page a changed page shadows (same URL key), and calls `PageIndexer` (incremental upserts/deletes per store view). Missing page/type/term/store view = success. Only the consumer (and the CLI) may use the processor or the index writers (`Test/Unit/Queue/AsyncOnlyContractTest`).
 - AMQP has no automatic retry (the framework consumer rejects with `requeue=false`). The handler republishes a failed message with `attempt + 1` until Maximum Attempts tries (default 3 = first try + 2 retries), then throws and RabbitMQ dead-letters it into the DLQ. Payloads that can never succeed go straight to the DLQ. PHP errors in the processor count as transient failures. Retries are immediate (republished at once, no backoff).
 - Framework behaviour to know: a message without a `message_id` property is acknowledged and dropped (our publisher always sets one); the same `message_id` delivered twice is processed once (`queue_lock`).
 - Idempotent: duplicate and out-of-order messages are safe; a second instance of the consumer is safe (do not configure `multiple_processes` for it anyway).
+- Cost of a retry: a failed message is replayed WHOLE. A content type or term message fans out to all its pages (up to 32 767), so a failure late in a large fan-out rewrites every page again on each retry (idempotent, but up to Maximum Attempts times the work).
+- Refresh (no freshness SLA): the consumer NEVER waits for an OpenSearch refresh (incremental bulk requests carry no `refresh` parameter; `require_alias=true` keeps a write from auto-creating an index). A change becomes searchable at the next periodic refresh (`refresh_interval` default 1 s; an index idle for 30 s is refreshed by its next search). Only `--sync` (FullReindexer) refreshes, once, before the alias switch. Tests that search right after consuming call `php integration/support/cmssearch_fixture.php index-refresh <store_id|all>` (or `POST {alias}/_refresh`). Measured with 7 store views: about 3.9 s per page message while it waited for refreshes, about 0.02-0.03 s per page message without.
 
 ### Running the consumer
 
@@ -101,6 +103,8 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 - Replay after fixing the cause: `bin/magento thedevkitchen:cmssearch:reindex --entity=page [--store=ID]` (one message per page), then empty the DLQ: `rabbitmqadmin purge queue name=thedevkitchen.cmssearch.reindex.dlq`
 - Magento's view: `bin/magento queue:consumers:list | grep thedevkitchen`
 - Errors and retries: `var/log/cmssearch_reindex.log`
+- Log rotation: Magento does not rotate `var/log/*.log` and this file gets two DEBUG lines per message. Rotate it with the host's logrotate, e.g. `/var/www/html/var/log/cmssearch_reindex.log { daily rotate 14 compress missingok notifempty copytruncate }` (`copytruncate`: the consumer keeps the file open), or raise the level of the `Thedevkitchen\CmsSearch\Model\Queue\Log\Handler` virtual type to drop the DEBUG lines.
+- Runbook after deleting a store view or a website (nothing is published for them): run `bin/magento thedevkitchen:cmssearch:reindex --sync` WITHOUT `--store`; it drops the indices of store views that no longer exist (`IndexManager::dropOrphans`). A new store view gets its index at its first message; fill it with `bin/magento thedevkitchen:cmssearch:reindex --store=<id>`. The consumer reads the store list once per process (restart it, or wait for the cron restart, after adding or deleting a store view).
 
 ### Reindex command
 
@@ -114,7 +118,8 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 
 - Saving a content type or a classification term publishes one message for the entity; the consumer (Plan 4) expands it to every linked page (content type) or to the pages of the term's current subtree, so one save can fan out to many pages.
 - Content type and term saves publish on every save, including unchanged ones.
-- Store view and website deletion publish nothing (per-store-view index lifecycle: Plan 4). Blocks, dynamic blocks, products and categories are Plan 6.
+- Store view and website deletion publish nothing (see the runbook above: `--sync` without `--store`). Blocks, dynamic blocks, products and categories are Plan 6.
+- Shadowed store-0 pages (Magento serves a store-view page before the store-0 page with the same URL key): a page save reindexes the store-0 page of its current key (consumer side); a rename away from a key or a delete also publishes `page`/`save` for the active store-0 pages of the key it left (`Observer\PublishPageReindex`, one indexed query only on a rename or delete).
 - Test fixtures use raw SQL and bypass events (no messages); so does the Cypress cleanup request.
 - A consumer that is killed hard (OOM, SIGKILL, container restart, timeout kill) silently loses the message it was handling: Magento writes the `queue_lock` row before the handler runs, so the redelivered message is acknowledged as already locked and dropped. The DLQ does not see it. Recovery: `bin/magento thedevkitchen:cmssearch:reindex`.
 - The reindex command does not stop at the first failed send: with the broker down every send is attempted (and counted), so a large site waits for the connection timeouts before the command exits 1.
@@ -125,9 +130,9 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 - Verified by `integration/test_cms_search_queue.sh`: scheduling and removing a version publish page messages, and the post-processor is registered once on the DI-built `StagingApplier` and publishes `staging` messages.
 - Not run by the suite because it would apply every due update of the shared database and move the global Staging version: the real time-based activation. Manual check on a disposable environment with cron running: schedule an update two minutes ahead on a test page, wait for `staging_apply_version`, then `rabbitmqadmin get queue=thedevkitchen.cmssearch.reindex ackmode=ack_requeue_true` shows `"action":"staging"` for that page.
 
-### Plan 4 handoff
+### Plan 4 handoff (done in Plan 4 Task 9: `PageReindexProcessor` is the bound processor)
 
-- Implement `Model\Queue\ReindexProcessorInterface` and replace the `NullReindexProcessor` preference; add the class to the allow-list of `Test/Unit/Queue/AsyncOnlyContractTest`.
+- `Model\Queue\PageReindexProcessor` implements `ReindexProcessorInterface` and replaced the Plan 3 placeholder preference; it is in the allow-list of `Test/Unit/Queue/AsyncOnlyContractTest`.
 - Re-read the current state for every message (action is a hint); a deleted or invisible page removes its document; intersect the term's website with the page's websites at index time (links can go stale); effective-active term (ancestors) and active type decide indexability.
 - `classification_term`/`save`: reindex the pages linked to the term's current subtree (`fetchSubtree` by the term's path); `content_type`: the pages of the type; `store_id` in a message limits the work to that store view.
 - A page, content type or term that no longer exists is SUCCESS, not an error (it is a normal race: the entity was deleted after the message was published).

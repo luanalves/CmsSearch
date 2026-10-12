@@ -10,6 +10,8 @@ use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\DB\Select;
 use Magento\Framework\EntityManager\EntityMetadataInterface;
 use Magento\Framework\EntityManager\MetadataPool;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
+use Magento\Staging\Model\VersionHistoryInterface;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\PageSnapshot;
 use Thedevkitchen\CmsSearch\Model\Indexer\ShadowedPageReader;
@@ -55,6 +57,7 @@ class ShadowedPageReaderTest extends TestCase
         });
         $connection->method('fetchCol')->willReturnCallback(function () use ($column): array {
             $this->queries++;
+            $this->calls[] = 'fetchCol';
             return $column;
         });
         $resource = $this->createMock(ResourceConnection::class);
@@ -66,7 +69,11 @@ class ShadowedPageReaderTest extends TestCase
         $metadata->method('getEntityTable')->willReturn('cms_page');
         $pool = $this->createMock(MetadataPool::class);
         $pool->method('getMetadata')->with(PageInterface::class)->willReturn($metadata);
-        return new ShadowedPageReader($resource, $pool);
+        $history = $this->createMockForIntersectionOfInterfaces([VersionHistoryInterface::class, ResetAfterRequestInterface::class]);
+        $history->method('_resetState')->willReturnCallback(function (): void {
+            $this->calls[] = 'reset staging version';
+        });
+        return new ShadowedPageReader($resource, $pool, $history);
     }
 
     /** @param int[] $storeIds */
@@ -137,6 +144,7 @@ class ShadowedPageReaderTest extends TestCase
         $this->assertSame([2, 9], $reader->siblingsOf([11, '13', 11, 0, -4]));
         $this->assertSame(1, $this->queries);
         $this->assertSame([
+            'reset staging version',
             'from {"p":"cms_page"} []',
             'join {"q":"cms_page"} ON q.identifier = p.identifier AND q.page_id <> p.page_id []',
             'join {"qs":"cms_page_store"} ON qs.row_id = q.row_id []',
@@ -144,6 +152,7 @@ class ShadowedPageReaderTest extends TestCase
             'where p.page_id IN (?) [11,13]',
             'where qs.store_id = ? 0',
             'distinct',
+            'fetchCol',
         ], $this->calls);
     }
 
@@ -158,6 +167,49 @@ class ShadowedPageReaderTest extends TestCase
         $reader = $this->reader([], 'row_id', ['2']);
         $this->assertSame([], $reader->siblingsOf([]));
         $this->assertSame([], $reader->siblingsOf([0, -1]));
+        $this->assertSame(0, $this->queries);
+    }
+
+    /**
+     * The sibling lookup runs before any page snapshot is read in the long-lived consumer: the Staging version cached
+     * by VersionHistory must be reloaded first, or a version applied meanwhile would be compared on stale rows.
+     */
+    public function testTheSiblingLookupReloadsTheCurrentStagingVersionBeforeQuerying(): void
+    {
+        $this->reader([], 'row_id', ['2'])->siblingsOf([11]);
+        $this->assertSame('reset staging version', $this->calls[0]);
+        $this->assertSame('fetchCol', end($this->calls));
+    }
+
+    public function testTheVersionHistoryIsARequiredDependency(): void
+    {
+        $parameter = (new \ReflectionMethod(ShadowedPageReader::class, '__construct'))->getParameters()[2];
+        $this->assertSame(VersionHistoryInterface::class, (string) $parameter->getType());
+        $this->assertFalse($parameter->isOptional());
+    }
+
+    public function testTheActiveStoreZeroPagesOfUrlKeysAreReadInOneQueryWithoutTouchingTheStagingVersion(): void
+    {
+        // called from the page save/delete transaction (Staging may have set the version it saves): no reset
+        $reader = $this->reader([], 'row_id', ['2', '5', '2', '11']);
+        $this->assertSame([2, 5], $reader->activeStoreZeroPagesNamed(['home', 'about', 'home', ''], 11));
+        $this->assertSame([
+            'from {"p":"cms_page"} []',
+            'join {"ps":"cms_page_store"} ON ps.row_id = p.row_id []',
+            'columns {"page_id":"p.page_id"}',
+            'where p.identifier IN (?) ["about","home"]',
+            'where ps.store_id = ? 0',
+            'where p.is_active = ? 1',
+            'where p.page_id <> ? 11',
+            'distinct',
+            'fetchCol',
+        ], $this->calls);
+    }
+
+    public function testNoUrlKeyMeansNoStoreZeroQuery(): void
+    {
+        $reader = $this->reader([], 'row_id', ['2']);
+        $this->assertSame([], $reader->activeStoreZeroPagesNamed(['', ''], 11));
         $this->assertSame(0, $this->queries);
     }
 }
