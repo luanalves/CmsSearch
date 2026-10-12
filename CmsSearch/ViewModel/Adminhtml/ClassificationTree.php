@@ -46,7 +46,8 @@ class ClassificationTree implements ArgumentInterface
     public function getSelectedWebsiteId(): int
     {
         $ids = array_column($this->getWebsites(), 'id');
-        $requested = (string) $this->request->getParam('website_id');
+        $param = $this->request->getParam('website_id');
+        $requested = is_string($param) || is_int($param) ? (string) $param : '';
         if (ctype_digit($requested) && in_array((int) $requested, $ids, true)) {
             return (int) $requested;
         }

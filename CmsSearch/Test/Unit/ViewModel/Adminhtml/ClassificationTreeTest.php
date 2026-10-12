@@ -17,7 +17,7 @@ use Thedevkitchen\CmsSearch\ViewModel\Adminhtml\ClassificationTree;
 
 class ClassificationTreeTest extends TestCase
 {
-    private function viewModel(string $requestedWebsite, bool $canManage = true, ?TermResource $resource = null, ?UsageCounter $counter = null): ClassificationTree
+    private function viewModel(mixed $requestedWebsite, bool $canManage = true, ?TermResource $resource = null, ?UsageCounter $counter = null): ClassificationTree
     {
         $request = $this->createMock(RequestInterface::class);
         $request->method('getParam')->with('website_id')->willReturn($requestedWebsite);
@@ -60,6 +60,14 @@ class ClassificationTreeTest extends TestCase
         $this->assertSame(2, $this->viewModel('99')->getSelectedWebsiteId());
         $this->assertSame(2, $this->viewModel('abc')->getSelectedWebsiteId());
         $this->assertSame(2, $this->viewModel('')->getSelectedWebsiteId());
+    }
+
+    public function testNonScalarOrMalformedWebsiteParamsFallBackToTheFirstWebsite(): void
+    {
+        foreach ([['1'], [['2']], '-3', '0', ' 2', '2abc', null, 3.0, true] as $value) {
+            $this->assertSame(2, $this->viewModel($value)->getSelectedWebsiteId(), var_export($value, true));
+        }
+        $this->assertSame(3, $this->viewModel(3)->getSelectedWebsiteId());
     }
 
     public function testRowsAreTheFlattenedTreeOfTheSelectedWebsiteWithPageCounts(): void
