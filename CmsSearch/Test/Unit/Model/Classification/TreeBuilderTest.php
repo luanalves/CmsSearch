@@ -54,7 +54,12 @@ class TreeBuilderTest extends TestCase
         $tree = $this->builder()->assemble($rows, [], 0, true);
         $this->assertSame([1], $this->ids($tree));
         $this->assertSame([4], $this->ids($tree[0]['children']));
-        $this->assertCount(4, $this->builder()->flatten($this->builder()->assemble($rows, [], 0, false)));
+    }
+
+    public function testWithoutActiveOnlyInactiveTermsAreKept(): void
+    {
+        $rows = [$this->row(1, null, '1'), $this->row(2, 1, '1/2', 0, false), $this->row(3, 2, '1/2/3')];
+        $this->assertCount(3, $this->builder()->flatten($this->builder()->assemble($rows, [], 0, false)));
     }
 
     public function testLabelFallsBackFromStoreViewToDefaultToCode(): void

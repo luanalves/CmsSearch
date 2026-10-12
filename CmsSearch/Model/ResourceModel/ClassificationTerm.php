@@ -79,6 +79,7 @@ class ClassificationTerm extends AbstractDb
         $select = $connection->select()
             ->from($this->getMainTable(), ['term_id', 'path', 'level'])
             ->where('path = ?', $path)
+            // paths contain only digits and '/', so no LIKE wildcard escaping is needed
             ->orWhere('path LIKE ?', $path . '/%')
             ->order('level ASC');
         return array_map(

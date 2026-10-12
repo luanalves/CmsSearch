@@ -24,6 +24,9 @@ class PathManager
      * Places the term under $parentId (null = root) and rewrites the path and level of the term and of all
      * of its descendants. Must run inside the caller's transaction.
      *
+     * Known limitation: no row locking (FOR UPDATE), so concurrent moves are not serialized; this is an
+     * admin-only, low-frequency operation.
+     *
      * @param string $oldPath stored path before the change, '' for a term that was just inserted
      * @return array{path: string, level: int} the new path and level of the term
      * @throws InputException missing parent, or a result deeper or longer than allowed (nothing is written)
@@ -37,6 +40,9 @@ class PathManager
             $parent = $this->resource->getStoredState($parentId);
             if ($parent === null) {
                 throw new InputException(__('The parent term does not exist.'));
+            }
+            if ($oldPath !== '' && ($parent['path'] === $oldPath || str_starts_with($parent['path'], $oldPath . '/'))) {
+                throw new InputException(__('A term cannot be moved under itself or under one of its descendants.'));
             }
             $newPath = $parent['path'] . '/' . $termId;
             $newLevel = $parent['level'] + 1;

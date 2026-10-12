@@ -141,4 +141,64 @@ class PathManagerTest extends TestCase
         $this->expectException(InputException::class);
         (new PathManager($this->resource))->relocate(15, 5, '');
     }
+
+    public function testAPathOfExactly255CharsIsAcceptedAnd256IsRejected(): void
+    {
+        $parent253 = implode('/', [str_repeat('9', 84), str_repeat('9', 84), str_repeat('9', 83)]);
+        $this->resource->method('getStoredState')->willReturnOnConsecutiveCalls(
+            $this->state(1, $parent253, 2),
+            $this->state(1, $parent253 . '9', 2)
+        );
+        $manager = new PathManager($this->resource);
+        $placed = $manager->relocate(5, 1, '');
+        $this->assertSame(255, strlen($placed['path']));
+        $this->expectException(InputException::class);
+        $manager->relocate(5, 1, '');
+    }
+
+    public function testASingleNewTermAtLevelTenIsRejected(): void
+    {
+        $this->resource->method('getStoredState')->willReturn($this->state(8, '1/2/3/4/5/6/7/8/9/10', PathManager::MAX_LEVEL));
+        $this->expectException(InputException::class);
+        try {
+            (new PathManager($this->resource))->relocate(15, 8, '');
+        } finally {
+            $this->assertSame([], $this->writes);
+        }
+    }
+
+    public function testMovingATermUnderItselfIsRejectedWithoutWriting(): void
+    {
+        $this->resource->method('getStoredState')->with(4)->willReturn($this->state(4, '1/4', 1));
+        $this->resource->method('fetchSubtree')->willReturn([['term_id' => 4, 'path' => '1/4', 'level' => 1]]);
+        $this->expectException(InputException::class);
+        try {
+            (new PathManager($this->resource))->relocate(4, 4, '1/4');
+        } finally {
+            $this->assertSame([], $this->writes);
+        }
+    }
+
+    public function testMovingATermUnderItsOwnDescendantIsRejectedWithoutWriting(): void
+    {
+        $this->resource->method('getStoredState')->with(9)->willReturn($this->state(9, '1/4/9', 2));
+        $this->resource->method('fetchSubtree')->willReturn([
+            ['term_id' => 4, 'path' => '1/4', 'level' => 1],
+            ['term_id' => 9, 'path' => '1/4/9', 'level' => 2],
+        ]);
+        $this->expectException(InputException::class);
+        try {
+            (new PathManager($this->resource))->relocate(4, 9, '1/4');
+        } finally {
+            $this->assertSame([], $this->writes);
+        }
+    }
+
+    public function testMovingUnderASiblingWhosePathOnlySharesThePrefixDigitsIsAllowed(): void
+    {
+        $this->resource->method('getStoredState')->with(40)->willReturn($this->state(40, '1/40', 1));
+        $this->resource->method('fetchSubtree')->willReturn([['term_id' => 4, 'path' => '1/4', 'level' => 1]]);
+        $placed = (new PathManager($this->resource))->relocate(4, 40, '1/4');
+        $this->assertSame(['path' => '1/40/4', 'level' => 2], $placed);
+    }
 }
