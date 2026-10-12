@@ -17,7 +17,6 @@ use Thedevkitchen\CmsSearch\Exception\InvalidReindexMessageException;
 use Thedevkitchen\CmsSearch\Exception\ReindexFailedException;
 use Thedevkitchen\CmsSearch\Model\Config;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageCodec;
-use Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexProcessorInterface;
@@ -64,7 +63,8 @@ class ReindexHandlerTest extends TestCase
             ]
         ));
         $this->publisher->expects($this->never())->method('publish');
-        $this->logger->expects($this->once())->method('info')->with('processed ' . self::body());
+        $this->logger->expects($this->never())->method('info');
+        $this->logger->expects($this->once())->method('debug')->with('processed ' . self::body());
         $this->handler()->process(self::body());
     }
 
@@ -160,14 +160,6 @@ class ReindexHandlerTest extends TestCase
                 $this->assertFalse(is_a($class, $dropped, true), "$class must not be a $dropped");
             }
         }
-    }
-
-    public function testThePlaceholderProcessorAcceptsEveryMessage(): void
-    {
-        $processor = new NullReindexProcessor();
-        $this->assertInstanceOf(ReindexProcessorInterface::class, $processor);
-        $processor->process(new ReindexMessage('page', 1, 'delete', 1));
-        $this->addToAssertionCount(1);
     }
 
     /**

@@ -15,7 +15,7 @@ use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
 use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
-use Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor;
+use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
 use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied;
@@ -191,7 +191,7 @@ class DiPreferencesContractTest extends TestCase
     {
         $di = $this->di('etc/di.xml');
         $preference = $di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Model\\Queue\\ReindexProcessorInterface"]/@type');
-        $this->assertSame([NullReindexProcessor::class], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $preference));
+        $this->assertSame([PageReindexProcessor::class], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $preference));
         $logger = $di->xpath('//type[@name="Thedevkitchen\\CmsSearch\\Model\\Queue\\ReindexHandler"]/arguments/argument[@name="logger"]');
         $this->assertCount(1, $logger);
         $this->assertSame(self::LOGGER, ltrim((string) $logger[0], '\\'));
@@ -218,7 +218,7 @@ class DiPreferencesContractTest extends TestCase
             [ReindexPublisher::class],
             $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\ReindexPublisherInterface"]/@type'))
         );
-        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class] as $class) {
+        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class, PageReindexProcessor::class] as $class) {
             $this->assertSame(
                 [self::LOGGER],
                 $names($di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),

@@ -7,8 +7,8 @@ namespace Thedevkitchen\CmsSearch\Model\Queue;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 
 /**
- * Does the reindex work for one message. Plan 3 binds the placeholder NullReindexProcessor in etc/di.xml;
- * Plan 4 replaces that preference with the indexer.
+ * Does the reindex work for one message. Bound to PageReindexProcessor in etc/di.xml (Plan 4); Plan 6 extends it
+ * to blocks, products and categories.
  *
  * Contract for implementations:
  * - idempotent: re-read the CURRENT database state; the same message twice, or messages out of order, must end in

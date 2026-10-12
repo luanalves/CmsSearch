@@ -22,8 +22,9 @@ class ShadowedPageReaderTest extends TestCase
 
     /**
      * @param list<array<string, mixed>> $rows result of the single query
+     * @param list<string> $column result of the single siblingsOf() query
      */
-    private function reader(array $rows = [], string $linkField = 'row_id'): ShadowedPageReader
+    private function reader(array $rows = [], string $linkField = 'row_id', array $column = []): ShadowedPageReader
     {
         $select = $this->createMock(Select::class);
         $select->method('from')->willReturnCallback(function ($name, $cols = '*') use ($select) {
@@ -51,6 +52,10 @@ class ShadowedPageReaderTest extends TestCase
         $connection->method('fetchAll')->willReturnCallback(function () use ($rows): array {
             $this->queries++;
             return $rows;
+        });
+        $connection->method('fetchCol')->willReturnCallback(function () use ($column): array {
+            $this->queries++;
+            return $column;
         });
         $resource = $this->createMock(ResourceConnection::class);
         $resource->method('getConnection')->willReturn($connection);
@@ -123,6 +128,36 @@ class ShadowedPageReaderTest extends TestCase
         $this->assertSame([], $reader->read([3 => self::page(3, [2]), 4 => self::page(4, [0], false)], [2]));
         $this->assertSame([], $reader->read([2 => self::page(2, [0])], []));
         $this->assertSame([], $reader->read([2 => self::page(2, [0])], [0, -1]));
+        $this->assertSame(0, $this->queries);
+    }
+
+    public function testTheSiblingsOfAllStoreViewsThatChangedPagesMayShadowAreReadInOneQuery(): void
+    {
+        $reader = $this->reader([], 'row_id', ['2', '9', '11', '2']);
+        $this->assertSame([2, 9], $reader->siblingsOf([11, '13', 11, 0, -4]));
+        $this->assertSame(1, $this->queries);
+        $this->assertSame([
+            'from {"p":"cms_page"} []',
+            'join {"q":"cms_page"} ON q.identifier = p.identifier AND q.page_id <> p.page_id []',
+            'join {"qs":"cms_page_store"} ON qs.row_id = q.row_id []',
+            'columns {"page_id":"q.page_id"}',
+            'where p.page_id IN (?) [11,13]',
+            'where qs.store_id = ? 0',
+            'distinct',
+        ], $this->calls);
+    }
+
+    public function testSiblingsUseTheLinkFieldOfTheEdition(): void
+    {
+        $this->reader([], 'page_id')->siblingsOf([11]);
+        $this->assertContains('join {"qs":"cms_page_store"} ON qs.page_id = q.page_id []', $this->calls);
+    }
+
+    public function testNoPageMeansNoSiblingQuery(): void
+    {
+        $reader = $this->reader([], 'row_id', ['2']);
+        $this->assertSame([], $reader->siblingsOf([]));
+        $this->assertSame([], $reader->siblingsOf([0, -1]));
         $this->assertSame(0, $this->queries);
     }
 }

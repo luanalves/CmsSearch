@@ -85,4 +85,47 @@ class ShadowedPageReader
             return $ids;
         }, $shadowed);
     }
+
+    /**
+     * Pages of All Store Views (store 0) whose URL key one of the given pages shares: whether they are served in a
+     * store view depends on these pages, so a change of one of them (activation, store views, deletion of its
+     * current version) must reindex them too. One query; at most one store-0 page per URL key (URL keys are unique
+     * per store), so the result is bounded by the input. A page already deleted, or whose URL key changed, no longer
+     * names its old siblings (they follow at their own next reindex or the next --sync).
+     *
+     * @param array<int|string> $pageIds
+     * @return list<int> ascending ids, the given pages excluded
+     */
+    public function siblingsOf(array $pageIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $pageIds), static fn (int $id): bool => $id > 0)));
+        sort($ids);
+        if ($ids === []) {
+            return [];
+        }
+        $metadata = $this->metadataPool->getMetadata(PageInterface::class);
+        $linkField = $metadata->getLinkField();
+        $idField = $metadata->getIdentifierField();
+        $pageTable = $this->resource->getTableName($metadata->getEntityTable());
+        $connection = $this->resource->getConnection();
+        $select = $connection->select()
+            ->from(['p' => $pageTable], [])
+            ->join(
+                ['q' => $pageTable],
+                sprintf('q.identifier = p.identifier AND q.%1$s <> p.%1$s', $idField),
+                []
+            )
+            ->join(
+                ['qs' => $this->resource->getTableName(self::STORE_TABLE)],
+                sprintf('qs.%1$s = q.%1$s', $linkField),
+                []
+            )
+            ->columns(['page_id' => 'q.' . $idField])
+            ->where(sprintf('p.%s IN (?)', $idField), $ids)
+            ->where('qs.store_id = ?', 0)
+            ->distinct();
+        $siblings = array_values(array_diff(array_unique(array_map('intval', $connection->fetchCol($select))), $ids));
+        sort($siblings);
+        return $siblings;
+    }
 }

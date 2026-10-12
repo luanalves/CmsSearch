@@ -51,7 +51,8 @@ class ReindexHandler
             $this->handleFailure($request, $exception);
             return;
         }
-        $this->logger->info('processed ' . $this->codec->encode($request));
+        // debug, not info: one line per message in a file nobody rotates (raise the handler level to silence it)
+        $this->logger->debug('processed ' . $this->codec->encode($request));
     }
 
     /**
