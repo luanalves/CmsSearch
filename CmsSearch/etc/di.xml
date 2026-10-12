@@ -7,4 +7,25 @@
                 type="Thedevkitchen\CmsSearch\Model\ContentTypeRepository"/>
     <preference for="Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface"
                 type="Magento\Framework\Api\SearchResults"/>
+    <type name="Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\Grid\Collection">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">thedevkitchen_cmssearch_content_type</argument>
+            <argument name="resourceModel" xsi:type="string">Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType</argument>
+        </arguments>
+    </type>
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="thedevkitchen_cmssearch_content_type_listing_data_source" xsi:type="string">Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\Grid\Collection</item>
+            </argument>
+        </arguments>
+    </type>
+    <virtualType name="Thedevkitchen\CmsSearch\Ui\DataProvider\ContentType\ListingDataProvider"
+                 type="Magento\Framework\View\Element\UiComponent\DataProvider\DataProvider">
+        <arguments>
+            <argument name="addFilterStrategies" xsi:type="array">
+                <item name="fulltext" xsi:type="object">Thedevkitchen\CmsSearch\Ui\DataProvider\ContentType\CodeAndLabelFilter</item>
+            </argument>
+        </arguments>
+    </virtualType>
 </config>

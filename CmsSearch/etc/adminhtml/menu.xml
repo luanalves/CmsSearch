@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Thedevkitchen_CmsSearch::root" title="CMS Search" translate="title"
+             module="Thedevkitchen_CmsSearch" sortOrder="70" parent="Magento_Backend::content"
+             resource="Thedevkitchen_CmsSearch::root"/>
+        <add id="Thedevkitchen_CmsSearch::content_types" title="Content Types" translate="title"
+             module="Thedevkitchen_CmsSearch" sortOrder="10" parent="Thedevkitchen_CmsSearch::root"
+             action="thedevkitchen_cmssearch/contenttype" resource="Thedevkitchen_CmsSearch::content_types"/>
+    </menu>
+</config>
