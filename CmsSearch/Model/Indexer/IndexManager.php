@@ -120,8 +120,11 @@ class IndexManager
     /**
      * @param string $target incremental: the alias of a store view; full rebuild: a version from createIndex()
      * @param list<array{action: string, id: string, document?: array<string, mixed>}> $operations
-     * @param bool $incremental true: the write must hit the existing alias and be searchable when this returns
-     *                          (refresh=wait_for); false: the version is filled through its build alias, no refresh
+     * @param bool $incremental true: the write must hit the existing alias; false: the version is filled through its
+     *                          build alias. Neither waits for a refresh (REFRESH DECISION, no freshness SLA): an
+     *                          incremental change becomes searchable at the next periodic refresh (refresh_interval
+     *                          1s, or the first search of a search-idle index); FullReindexer refreshes once before
+     *                          the alias switch; tests call refresh() explicitly
      * @throws IndexingException|\InvalidArgumentException
      */
     public function bulk(string $target, array $operations, bool $incremental): void
@@ -161,9 +164,6 @@ class IndexManager
             'body' => $body,
             'require_alias' => 'true',
         ];
-        if ($incremental) {
-            $params['refresh'] = 'wait_for';
-        }
         $response = $this->call('bulk ' . $target, fn () => $this->clientProvider->get()->bulk($this->params($params)));
         if (is_array($response) && empty($response['errors'])) {
             return;

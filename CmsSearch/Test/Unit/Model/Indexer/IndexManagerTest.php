@@ -235,7 +235,20 @@ class IndexManagerTest extends TestCase
 
     // ---- bulk -------------------------------------------------------------------------------------------------
 
-    public function testIncrementalBulkWritesThroughTheAliasAndWaitsForRefresh(): void
+    /**
+     * REFRESH DECISION (no freshness SLA): the consumer never waits for a refresh (wait_for cost ~0.5 s per store view
+     * and message); the periodic/search-idle refresh makes the change searchable, tests refresh explicitly.
+     */
+    public function testIncrementalBulkWritesThroughTheAliasWithoutWaitingForARefresh(): void
+    {
+        $this->client->expects($this->once())->method('bulk')->with($this->callback(function (array $params): bool {
+            $this->assertArrayNotHasKey('refresh', $params);
+            return true;
+        }))->willReturn(['errors' => false, 'items' => []]);
+        $this->manager()->bulk(self::ALIAS, [['action' => 'delete', 'id' => 'page_6']], true);
+    }
+
+    public function testIncrementalBulkWritesThroughTheAlias(): void
     {
         $this->client->expects($this->once())->method('bulk')->with(self::req([
             'index' => self::ALIAS,
@@ -245,7 +258,6 @@ class IndexManagerTest extends TestCase
                 ['delete' => ['_id' => 'page_6']],
             ],
             'require_alias' => 'true',
-            'refresh' => 'wait_for',
         ]))->willReturn(['errors' => false, 'items' => []]);
         $this->manager()->bulk(self::ALIAS, [
             ['action' => 'index', 'id' => 'page_5', 'document' => ['title' => 'A']],
