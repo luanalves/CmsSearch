@@ -31,6 +31,10 @@ class AclContractTest extends TestCase
         ],
         'Classification' => [
             'Index' => self::CLS,
+            'Edit' => self::CLS,
+            'NewAction' => self::CLS . '_manage',
+            'Save' => self::CLS . '_manage',
+            'Delete' => self::CLS . '_manage',
         ],
     ];
 
