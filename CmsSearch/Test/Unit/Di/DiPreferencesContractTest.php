@@ -208,11 +208,41 @@ class DiPreferencesContractTest extends TestCase
             [ReindexPublisher::class],
             $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\ReindexPublisherInterface"]/@type'))
         );
-        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class] as $class) {
+        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class] as $class) {
             $this->assertSame(
                 [self::LOGGER],
                 $names($di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),
                 "$class must log to var/log/cmssearch_reindex.log"
+            );
+        }
+    }
+
+    /**
+     * The queue logger must write ONLY to var/log/cmssearch_reindex.log. A virtualType of
+     * Magento\Framework\Logger\Monolog inherits (merges) the core handler list of that type (system, debug, syslog,
+     * Magento_Support's report handler), so the base must be the plain Monolog\Logger, which no DI file configures.
+     */
+    public function testTheQueueLoggerHasNoInheritedHandlers(): void
+    {
+        $this->assertSame(\Monolog\Logger::class, $this->virtualTypes()[self::LOGGER] ?? null);
+        $root = dirname(__DIR__, 7);
+        $files = array_merge(
+            [$root . '/app/etc/di.xml'],
+            glob($root . '/vendor/*/*/etc/di.xml') ?: [],
+            glob($root . '/vendor/*/*/etc/*/di.xml') ?: [],
+            glob($root . '/app/code/*/*/etc/di.xml') ?: [],
+            glob($root . '/app/code/*/*/etc/*/di.xml') ?: []
+        );
+        $this->assertGreaterThan(100, count($files), 'the scan must see the vendor DI files');
+        foreach ($files as $file) {
+            $xml = simplexml_load_file($file);
+            if ($xml === false) {
+                continue;
+            }
+            $this->assertSame(
+                [],
+                $xml->xpath('//type[@name="Monolog\\Logger" or @name="\\Monolog\\Logger"]/arguments/argument[@name="handlers"]'),
+                "$file configures handlers for every Monolog\\Logger; the queue logger would inherit them"
             );
         }
     }

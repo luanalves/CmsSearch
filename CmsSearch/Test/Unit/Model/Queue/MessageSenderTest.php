@@ -8,6 +8,7 @@ use Magento\Framework\MessageQueue\PublisherInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageCodec;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
@@ -45,5 +46,25 @@ class MessageSenderTest extends TestCase
             ->with($this->stringContains('publish failed ' . self::JSON . ': ' . $failure->getMessage()));
         $sender = new MessageSender($publisher, new MessageCodec(), $logger);
         $this->assertFalse($sender->send(new ReindexMessage('page', 7, 'save', 1760000000)));
+    }
+
+    public function testAnEncodingErrorIsLoggedAndNeverThrown(): void
+    {
+        $message = $this->createMock(ReindexMessageInterface::class);
+        $message->method('toArray')->willThrowException(new \Error('cannot encode'));
+        $publisher = $this->createMock(PublisherInterface::class);
+        $publisher->expects($this->never())->method('publish');
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())->method('error')->with($this->stringContains('publish failed (unencodable message): cannot encode'));
+        $this->assertFalse((new MessageSender($publisher, new MessageCodec(), $logger))->send($message));
+    }
+
+    public function testAFailingLoggerIsNeverThrownEither(): void
+    {
+        $publisher = $this->createMock(PublisherInterface::class);
+        $publisher->method('publish')->willThrowException(new \RuntimeException('Connection refused'));
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->method('error')->willThrowException(new \UnexpectedValueException('log file not writable'));
+        $this->assertFalse((new MessageSender($publisher, new MessageCodec(), $logger))->send(new ReindexMessage('page', 7, 'save', 1760000000)));
     }
 }

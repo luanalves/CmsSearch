@@ -11,6 +11,9 @@ namespace Thedevkitchen\CmsSearch\Api;
  * Inside a database transaction the request is held and sent only after the OUTERMOST commit (dropped on rollback),
  * so the consumer never reads uncommitted state; identical requests in one transaction are sent once. Outside a
  * transaction the request is sent immediately.
+ *
+ * Only the transaction level of the default ResourceConnection adapter is consulted (this project maps every resource
+ * to the default connection; a write on another connection would not delay the message).
  */
 interface ReindexPublisherInterface
 {

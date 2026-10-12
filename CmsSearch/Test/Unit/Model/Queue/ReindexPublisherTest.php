@@ -10,6 +10,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
+use Thedevkitchen\CmsSearch\Model\Queue\MessageCodec;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\PendingMessages;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
@@ -47,7 +48,7 @@ class ReindexPublisherTest extends TestCase
 
     private function plugin(): FlushReindexMessagesPlugin
     {
-        return new FlushReindexMessagesPlugin($this->pending, $this->sender);
+        return new FlushReindexMessagesPlugin($this->pending, $this->sender, new MessageCodec(), $this->logger);
     }
 
     public function testOutsideATransactionTheMessageIsSentAtOnce(): void

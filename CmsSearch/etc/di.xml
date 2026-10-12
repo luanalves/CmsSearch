@@ -57,7 +57,9 @@
             <argument name="fileName" xsi:type="string">/var/log/cmssearch_reindex.log</argument>
         </arguments>
     </virtualType>
-    <virtualType name="Thedevkitchen\CmsSearch\Model\Queue\Log\Logger" type="Magento\Framework\Logger\Monolog">
+    <!-- Plain Monolog\Logger on purpose: a virtualType of Magento\Framework\Logger\Monolog would merge the core handlers
+         (system, debug, syslog, support report) into ours and copy every line into those files. -->
+    <virtualType name="Thedevkitchen\CmsSearch\Model\Queue\Log\Logger" type="Monolog\Logger">
         <arguments>
             <argument name="name" xsi:type="string">cmssearch_reindex</argument>
             <argument name="handlers" xsi:type="array">
@@ -90,6 +92,7 @@
     <type name="Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin">
         <arguments>
             <argument name="sender" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\MessageSender\Proxy</argument>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
 </config>
