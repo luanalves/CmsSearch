@@ -362,4 +362,12 @@ class ClassificationTermRepositoryTest extends TestCase
         $this->expectException(ClassificationTermInUseException::class);
         $this->repository->delete($term);
     }
+
+    public function testAFailedDeletePublishesNothing(): void
+    {
+        $this->resource->method('delete')->willThrowException(new \RuntimeException('db'));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(\Magento\Framework\Exception\CouldNotDeleteException::class);
+        $this->repository->delete($this->term(4));
+    }
 }

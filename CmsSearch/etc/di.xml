@@ -81,6 +81,8 @@
     </type>
     <type name="Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher">
         <arguments>
+            <!-- Proxy: a page save inside a transaction only parks the request; the AMQP graph is built at flush time. -->
+            <argument name="sender" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\MessageSender\Proxy</argument>
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>

@@ -169,4 +169,40 @@ class ReindexHandlerTest extends TestCase
         $processor->process(new ReindexMessage('page', 1, 'delete', 1));
         $this->addToAssertionCount(1);
     }
+
+    /**
+     * @return array<string, array{0: \Throwable}>
+     */
+    public static function frameworkSpecialFailures(): array
+    {
+        return [
+            'connection lost' => [new ConnectionLostException('gone')],
+            'message lock' => [new MessageLockException(__('locked'))],
+            'not found' => [new NotFoundException(__('missing'))],
+            'php error' => [new \Error('boom')],
+        ];
+    }
+
+    #[DataProvider('frameworkSpecialFailures')]
+    public function testFrameworkSpecialExceptionsFromTheProcessorAreRetriedWhileAttemptsRemain(\Throwable $failure): void
+    {
+        $this->processor->method('process')->willThrowException($failure);
+        $this->publisher->expects($this->once())->method('publish')
+            ->with(ReindexMessageInterface::TOPIC, self::body(1));
+        $this->handler()->process(self::body(0));
+    }
+
+    #[DataProvider('frameworkSpecialFailures')]
+    public function testFrameworkSpecialExceptionsOnTheLastAttemptEndAsOurOwnException(\Throwable $failure): void
+    {
+        $this->processor->method('process')->willThrowException($failure);
+        $this->publisher->expects($this->never())->method('publish');
+        try {
+            $this->handler()->process(self::body(2));
+            $this->fail('expected ReindexFailedException');
+        } catch (\Throwable $caught) {
+            $this->assertSame(ReindexFailedException::class, $caught::class);
+            $this->assertSame($failure, $caught->getPrevious());
+        }
+    }
 }

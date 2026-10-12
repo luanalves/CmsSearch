@@ -151,4 +151,48 @@ class PageClassificationRepositoryTest extends TestCase
         $this->publisher->expects($this->once())->method('publish')->with('page', 7, 'save');
         $this->repository->unassign(7);
     }
+
+    public function testAFailedUnassignPublishesNothing(): void
+    {
+        $this->resource->method('remove')->willThrowException(new \RuntimeException('SQLSTATE secret'));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(CouldNotSaveException::class);
+        $this->repository->unassign(7);
+    }
+
+    public function testAFailedClearingPublishesNothing(): void
+    {
+        $this->resource->method('fetchRow')->willReturn(['type_id' => 3, 'term_id' => 10]);
+        $this->resource->method('remove')->willThrowException(new \RuntimeException('SQLSTATE secret'));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(CouldNotSaveException::class);
+        $this->repository->assign(7, null, null, [2]);
+    }
+
+    public function testClearingPublishesAfterTheRemoval(): void
+    {
+        $calls = [];
+        $this->resource->method('fetchRow')->willReturn(['type_id' => 3, 'term_id' => 10]);
+        $this->resource->method('remove')->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'remove';
+        });
+        $this->publisher->method('publish')->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'publish';
+        });
+        $this->repository->assign(7, null, null, [2]);
+        $this->assertSame(['remove', 'publish'], $calls);
+    }
+
+    public function testUnassignPublishesAfterTheRemoval(): void
+    {
+        $calls = [];
+        $this->resource->method('remove')->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'remove';
+        });
+        $this->publisher->method('publish')->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'publish';
+        });
+        $this->repository->unassign(7);
+        $this->assertSame(['remove', 'publish'], $calls);
+    }
 }

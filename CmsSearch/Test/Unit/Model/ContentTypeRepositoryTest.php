@@ -293,4 +293,12 @@ class ContentTypeRepositoryTest extends TestCase
         $this->expectException(ContentTypeInUseException::class);
         $this->repository->delete($type);
     }
+
+    public function testAFailedDeletePublishesNothing(): void
+    {
+        $this->resource->method('delete')->willThrowException(new \RuntimeException('db'));
+        $this->publisher->expects($this->never())->method('publish');
+        $this->expectException(CouldNotDeleteException::class);
+        $this->repository->delete($this->type(7, 'tv'));
+    }
 }

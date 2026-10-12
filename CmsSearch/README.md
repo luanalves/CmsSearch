@@ -79,7 +79,7 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 ### Running the consumer
 
 - Production: the native cron job `consumers_runner` (group `consumers`) starts it. This project's `app/etc/env.php` has no `cron_consumers_runner` key, so every consumer runs by cron with the defaults (`cron_run=true`, `max_messages=10000`; this consumer declares `maxMessages="1000"`, so it exits after 1000 messages and the next cron run restarts it). `bin/magento cron:run` must be scheduled.
-- Deploy step when an environment restricts consumers: add `'thedevkitchen.cmssearch.reindex'` to `cron_consumers_runner/consumers` (with `bin/magento setup:config:set` or by editing `app/etc/env.php`; never from the module):
+- Deploy step when an environment restricts consumers: add `'thedevkitchen.cmssearch.reindex'` to `cron_consumers_runner/consumers` (edit `app/etc/env.php`, or the deployment's env template; there is no `setup:config:set` option for it; never from the module):
   ```php
   'cron_consumers_runner' => [
       'cron_run' => true,
@@ -116,6 +116,7 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 - Content type and term saves publish on every save, including unchanged ones.
 - Store view and website deletion publish nothing (per-store-view index lifecycle: Plan 4). Blocks, dynamic blocks, products and categories are Plan 6.
 - Test fixtures use raw SQL and bypass events (no messages); so does the Cypress cleanup request.
+- A consumer that is killed hard (OOM, SIGKILL, container restart, timeout kill) silently loses the message it was handling: Magento writes the `queue_lock` row before the handler runs, so the redelivered message is acknowledged as already locked and dropped. The DLQ does not see it. Recovery: `bin/magento thedevkitchen:cmssearch:reindex`.
 - The reindex command does not stop at the first failed send: with the broker down every send is attempted (and counted), so a large site waits for the connection timeouts before the command exits 1.
 
 ### Staging
@@ -143,7 +144,7 @@ Run sequentially, never concurrently (shared admin/DB/broker state).
 
 - Unit: `php vendor/bin/phpunit -c phpunit.xml` (repo root).
 - ACL / data rules: `bash integration/test_content_type_acl.sh`, `bash integration/test_classification.sh`.
-- Reindex queue against the real RabbitMQ: `bash integration/test_cms_search_queue.sh` (144 checks, several minutes; `CMSSEARCH_QUEUE_BACKLOG=200` shortens the backlog case). It purges both module queues at start and end and skips when a consumer of the queue is running.
-- All three run from `./integration/run.sh`; they need the Warden php-fpm (and rabbitmq) containers and clean up after themselves.
+- Reindex queue against the real RabbitMQ: `bash integration/test_cms_search_queue.sh` (144 checks, several minutes). OPT-IN: without `CMSSEARCH_QUEUE_SUITE=1` it prints SKIP and exits 0, so `./integration/run.sh` and the Stop hook do not run it. `CMSSEARCH_QUEUE_BACKLOG=200` shortens the backlog case. It purges both module queues at start and end, refuses to start when the main queue already holds messages unless `CMSSEARCH_QUEUE_PURGE_OK=1` (then run `bin/magento thedevkitchen:cmssearch:reindex` afterwards), and skips when a consumer of the queue is running.
+- The two data-rule suites run from `./integration/run.sh` (the queue suite skips there); they need the Warden php-fpm (and rabbitmq) containers and clean up after themselves.
 - Admin flows (Cypress), one spec at a time: `cd e2e && env -u ELECTRON_RUN_AS_NODE npx cypress run --spec cypress/e2e/<spec>` with `content-type-admin.cy.js`, `classification-admin.cy.js`, `cms-page-search-fieldset.cy.js`, `cms-page-search-fieldset-existing.cy.js`. They share `e2e/cypress/support/cmssearch.js` (login, helpers and the single `use_form_key` baseline file, so the config flag is restored once).
 - Test-only helper: `integration/support/cmssearch_fixture.php` (CLI only; writes only `cmssearch_` codes/users and `cmssearch-` pages/Staging updates; `link-page`/`unlink-page` save and restore the link a page had before; backups live in `var/cmssearch-fixture`; queue commands run the real consumer in-process with a probe processor and can make the broker unreachable for their own process only).
