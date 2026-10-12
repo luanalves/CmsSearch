@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">thedevkitchen_cmssearch_content_type_form.thedevkitchen_cmssearch_content_type_form_data_source</item>
+        </item>
+        <item name="label" xsi:type="string" translate="true">Content Type</item>
+        <item name="template" xsi:type="string">templates/form/collapsible</item>
+    </argument>
+    <settings>
+        <buttons>
+            <button name="back" class="Thedevkitchen\CmsSearch\Block\Adminhtml\ContentType\Edit\BackButton"/>
+            <button name="delete" class="Thedevkitchen\CmsSearch\Block\Adminhtml\ContentType\Edit\DeleteButton"/>
+            <button name="save_and_continue" class="Thedevkitchen\CmsSearch\Block\Adminhtml\ContentType\Edit\SaveAndContinueButton"/>
+            <button name="save" class="Thedevkitchen\CmsSearch\Block\Adminhtml\ContentType\Edit\SaveButton"/>
+        </buttons>
+        <namespace>thedevkitchen_cmssearch_content_type_form</namespace>
+        <dataScope>data</dataScope>
+        <deps>
+            <dep>thedevkitchen_cmssearch_content_type_form.thedevkitchen_cmssearch_content_type_form_data_source</dep>
+        </deps>
+    </settings>
+    <dataSource name="thedevkitchen_cmssearch_content_type_form_data_source">
+        <argument name="data" xsi:type="array">
+            <item name="js_config" xsi:type="array">
+                <item name="component" xsi:type="string">Magento_Ui/js/form/provider</item>
+            </item>
+        </argument>
+        <settings>
+            <submitUrl path="thedevkitchen_cmssearch/contenttype/save"/>
+        </settings>
+        <dataProvider class="Thedevkitchen\CmsSearch\Ui\DataProvider\ContentType\FormDataProvider"
+                      name="thedevkitchen_cmssearch_content_type_form_data_source">
+            <settings>
+                <requestFieldName>type_id</requestFieldName>
+                <primaryFieldName>type_id</primaryFieldName>
+            </settings>
+        </dataProvider>
+    </dataSource>
+    <fieldset name="general">
+        <settings>
+            <label/>
+        </settings>
+        <field name="type_id" formElement="input">
+            <settings>
+                <dataType>text</dataType>
+                <visible>false</visible>
+                <dataScope>type_id</dataScope>
+            </settings>
+        </field>
+        <field name="code" formElement="input" sortOrder="10">
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Code</label>
+                <dataScope>code</dataScope>
+                <notice translate="true">Lowercase letters, digits and underscore. Cannot be changed after creation.</notice>
+                <validation>
+                    <rule name="required-entry" xsi:type="boolean">true</rule>
+                </validation>
+            </settings>
+        </field>
+        <field name="default_label" formElement="input" sortOrder="20">
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Default label</label>
+                <dataScope>default_label</dataScope>
+                <validation>
+                    <rule name="required-entry" xsi:type="boolean">true</rule>
+                </validation>
+            </settings>
+        </field>
+        <field name="sort_order" formElement="input" sortOrder="30">
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Tab order</label>
+                <dataScope>sort_order</dataScope>
+                <validation>
+                    <rule name="validate-digits" xsi:type="boolean">true</rule>
+                </validation>
+            </settings>
+        </field>
+        <field name="is_active" formElement="checkbox" sortOrder="40">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">content_type</item>
+                    <item name="default" xsi:type="number">1</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>boolean</dataType>
+                <label translate="true">Enable</label>
+                <dataScope>is_active</dataScope>
+            </settings>
+            <formElements>
+                <checkbox>
+                    <settings>
+                        <valueMap>
+                            <map name="false" xsi:type="number">0</map>
+                            <map name="true" xsi:type="number">1</map>
+                        </valueMap>
+                        <prefer>toggle</prefer>
+                    </settings>
+                </checkbox>
+            </formElements>
+        </field>
+        <dynamicRows name="store_labels" sortOrder="50">
+            <settings>
+                <addButtonLabel translate="true">Add Store View Label</addButtonLabel>
+                <additionalClasses>
+                    <class name="admin__field-wide">true</class>
+                </additionalClasses>
+                <componentType>dynamicRows</componentType>
+                <dndConfig>
+                    <param name="enabled" xsi:type="boolean">false</param>
+                </dndConfig>
+                <label translate="true">Store View Labels</label>
+                <recordTemplate>record</recordTemplate>
+            </settings>
+            <container name="record" component="Magento_Ui/js/dynamic-rows/record">
+                <argument name="data" xsi:type="array">
+                    <item name="config" xsi:type="array">
+                        <item name="isTemplate" xsi:type="boolean">true</item>
+                        <item name="is_collection" xsi:type="boolean">true</item>
+                        <item name="componentType" xsi:type="string">container</item>
+                    </item>
+                </argument>
+                <field name="store_id" formElement="select" sortOrder="10">
+                    <settings>
+                        <dataType>text</dataType>
+                        <label translate="true">Store View</label>
+                        <dataScope>store_id</dataScope>
+                    </settings>
+                    <formElements>
+                        <select>
+                            <settings>
+                                <options class="Magento\Store\Ui\Component\Listing\Column\Store\Options"/>
+                            </settings>
+                        </select>
+                    </formElements>
+                </field>
+                <field name="label" formElement="input" sortOrder="20">
+                    <settings>
+                        <dataType>text</dataType>
+                        <label translate="true">Label</label>
+                        <dataScope>label</dataScope>
+                    </settings>
+                </field>
+                <actionDelete sortOrder="30">
+                    <settings>
+                        <componentType>actionDelete</componentType>
+                        <dataType>text</dataType>
+                        <label/>
+                    </settings>
+                </actionDelete>
+            </container>
+        </dynamicRows>
+    </fieldset>
+</form>
