@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- cms_page_form: "Search" fieldset (content type + classification term). Nobody else sets this pool
+         (checked in Plan 2 Task 8); the Staging update form uses a subclass without a pool parameter. -->
+    <virtualType name="Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\Pool"
+                 type="Magento\Ui\DataProvider\Modifier\Pool">
+        <arguments>
+            <argument name="modifiers" xsi:type="array">
+                <item name="thedevkitchen_cmssearch" xsi:type="array">
+                    <item name="class" xsi:type="string">Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset</item>
+                    <item name="sortOrder" xsi:type="number">100</item>
+                </item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <type name="Magento\Cms\Model\Page\DataProvider">
+        <arguments>
+            <argument name="pool" xsi:type="object">Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\Pool</argument>
+        </arguments>
+        <plugin name="thedevkitchen_cmssearch_page_form_data" type="Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin"/>
+    </type>
+</config>
