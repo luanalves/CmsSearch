@@ -110,4 +110,13 @@ class AclContractTest extends TestCase
         $this->assertSame(self::CLS, constant($abstract . '::RESOURCE_VIEW'));
         $this->assertSame(self::CLS . '_manage', constant($abstract . '::RESOURCE_MANAGE'));
     }
+
+    public function testTheConfigurationSectionResourceSitsUnderStoresConfiguration(): void
+    {
+        $xml = simplexml_load_file(dirname(__DIR__, 3) . '/etc/acl.xml');
+        $path = '//resource[@id="Magento_Backend::stores"]/resource[@id="Magento_Backend::stores_settings"]'
+            . '/resource[@id="Magento_Config::config"]/resource[@id="Thedevkitchen_CmsSearch::config"]';
+        $this->assertCount(1, $xml->xpath($path));
+        $this->assertNotContains('Thedevkitchen_CmsSearch::config', $this->children('Thedevkitchen_CmsSearch::root'));
+    }
 }
