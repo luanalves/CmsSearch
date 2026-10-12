@@ -23,9 +23,9 @@ class BulkDeleter
     {
         $deleted = 0;
         $blocked = [];
-        foreach ($typeIds as $typeId) {
+        foreach (array_unique(array_map('intval', $typeIds)) as $typeId) {
             try {
-                $this->repository->deleteById((int) $typeId);
+                $this->repository->deleteById($typeId);
                 $deleted++;
             } catch (ContentTypeInUseException $exception) {
                 $blocked[] = $exception->getMessage();

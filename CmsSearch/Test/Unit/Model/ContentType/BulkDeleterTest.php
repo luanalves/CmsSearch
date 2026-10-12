@@ -36,4 +36,30 @@ class BulkDeleterTest extends TestCase
 
         $this->assertSame(['deleted' => 0, 'blocked' => []], (new BulkDeleter($repository))->delete([]));
     }
+
+    public function testDeletesEachDistinctIdOnlyOnce(): void
+    {
+        $repository = $this->createMock(ContentTypeRepositoryInterface::class);
+        $seen = [];
+        $repository->expects($this->exactly(2))->method('deleteById')->willReturnCallback(
+            function (int $id) use (&$seen): bool {
+                $seen[] = $id;
+                return true;
+            }
+        );
+
+        $result = (new BulkDeleter($repository))->delete([2, '2', 3]);
+
+        $this->assertSame([2, 3], $seen);
+        $this->assertSame(2, $result['deleted']);
+    }
+
+    public function testOtherExceptionsPropagate(): void
+    {
+        $repository = $this->createMock(ContentTypeRepositoryInterface::class);
+        $repository->method('deleteById')->willThrowException(new \RuntimeException('db down'));
+
+        $this->expectException(\RuntimeException::class);
+        (new BulkDeleter($repository))->delete([1]);
+    }
 }

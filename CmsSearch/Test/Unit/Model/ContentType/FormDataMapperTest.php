@@ -55,4 +55,17 @@ class FormDataMapperTest extends TestCase
             'store_labels' => [['record_id' => '2', 'store_id' => '2', 'label' => 'Noticias']],
         ], $this->mapper->toFormData($type));
     }
+
+    public function testMapsANewInactiveTypeToFormData(): void
+    {
+        $type = ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), null, 'tv', []);
+        $type->setSortOrder(0)->setIsActive(false);
+
+        $data = $this->mapper->toFormData($type);
+
+        $this->assertNull($data['type_id']);
+        $this->assertSame('0', $data['is_active']);
+        $this->assertSame('', $data['default_label']);
+        $this->assertSame([], $data['store_labels']);
+    }
 }

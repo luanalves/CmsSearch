@@ -28,14 +28,30 @@ class ContentTypeOptionsTest extends TestCase
         $criteria = $this->createMock(SearchCriteria::class);
         $builder = $this->createMock(SearchCriteriaBuilder::class);
         $builder->expects($this->once())->method('addFilter')->with('is_active', 1)->willReturnSelf();
-        $builder->expects($this->exactly(2))->method('addSortOrder')->willReturnSelf();
+        $added = [];
+        $builder->expects($this->exactly(2))->method('addSortOrder')->willReturnCallback(
+            function (SortOrder $order) use (&$added, $builder) {
+                $added[] = $order;
+                return $builder;
+            }
+        );
         $builder->method('create')->willReturn($criteria);
 
-        $sortOrder = $this->createMock(SortOrder::class);
+        $fields = [];
+        $created = [];
         $sortBuilder = $this->createMock(SortOrderBuilder::class);
-        $sortBuilder->method('setField')->willReturnSelf();
-        $sortBuilder->method('setAscendingDirection')->willReturnSelf();
-        $sortBuilder->method('create')->willReturn($sortOrder);
+        $sortBuilder->method('setField')->willReturnCallback(
+            function (string $field) use (&$fields, $sortBuilder) {
+                $fields[] = $field;
+                return $sortBuilder;
+            }
+        );
+        $sortBuilder->expects($this->exactly(2))->method('setAscendingDirection')->willReturnSelf();
+        $sortBuilder->method('create')->willReturnCallback(
+            function () use (&$created) {
+                return $created[] = $this->createMock(SortOrder::class);
+            }
+        );
 
         $results = $this->createMock(ContentTypeSearchResultsInterface::class);
         $results->method('getItems')->willReturn([
@@ -47,6 +63,9 @@ class ContentTypeOptionsTest extends TestCase
 
         $options = (new ContentTypeOptions($repository, $builder, $sortBuilder))->toOptionArray();
 
+        $this->assertSame(['sort_order', 'type_id'], $fields);
+        $this->assertCount(2, $created);
+        $this->assertSame($created, $added);
         $this->assertSame([
             ['value' => 4, 'label' => 'News'],
             ['value' => 9, 'label' => 'TV'],
