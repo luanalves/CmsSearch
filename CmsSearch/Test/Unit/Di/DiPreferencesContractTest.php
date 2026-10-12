@@ -54,4 +54,32 @@ class DiPreferencesContractTest extends TestCase
             $this->assertTrue($this->exists($base), "virtualType base class not found: $base");
         }
     }
+
+    public function testEveryArgumentNameIsAConstructorParameterOfTheResolvedClass(): void
+    {
+        $virtual = [];
+        foreach ($this->di()->xpath('//virtualType') as $vt) {
+            $virtual[ltrim((string) $vt['name'], '\\')] = ltrim((string) $vt['type'], '\\');
+        }
+        $checked = 0;
+        foreach ($this->di()->xpath('//type | //virtualType') as $node) {
+            $name = ltrim((string) $node['name'], '\\');
+            $class = $name;
+            for ($i = 0; isset($virtual[$class]) && $i < 20; $i++) {
+                $class = $virtual[$class];
+            }
+            foreach ($node->xpath('arguments/argument') as $argument) {
+                $argName = (string) $argument['name'];
+                $constructor = (new \ReflectionClass($class))->getConstructor();
+                $params = $constructor ? array_map(fn ($p) => $p->getName(), $constructor->getParameters()) : [];
+                $this->assertContains(
+                    $argName,
+                    $params,
+                    "$name: argument '$argName' is not a constructor parameter of $class"
+                );
+                $checked++;
+            }
+        }
+        $this->assertGreaterThan(0, $checked);
+    }
 }

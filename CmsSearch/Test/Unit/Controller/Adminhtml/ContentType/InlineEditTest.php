@@ -130,4 +130,33 @@ class InlineEditTest extends TestCase
         $this->assertTrue($this->payload['error']);
         $this->assertSame(['[ID: 2] Cannot save 2'], $this->payload['messages']);
     }
+
+    /** @return array<string, array{0: array<string, mixed>}> */
+    public static function invalidRows(): array
+    {
+        return [
+            'negative order' => [['sort_order' => '-1']],
+            'order too big' => [['sort_order' => '65536']],
+            'order text' => [['sort_order' => 'abc']],
+            'order decimal' => [['sort_order' => '1.5']],
+            'status 2' => [['is_active' => '2']],
+            'status text' => [['is_active' => 'yes']],
+        ];
+    }
+
+    /** @param array<string, mixed> $row */
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidRows')]
+    public function testRejectsInvalidInlineValuesPerItemWithoutSaving(array $row): void
+    {
+        $type = ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), 4, 'news')
+            ->setSortOrder(2)->setIsActive(true);
+        $repository = $this->createMock(ContentTypeRepositoryInterface::class);
+        $repository->method('getById')->willReturn($type);
+        $repository->expects($this->never())->method('save');
+        $this->controller(['isAjax' => 'true', 'items' => [4 => $row]], $repository)->execute();
+
+        $this->assertTrue($this->payload['error']);
+        $this->assertCount(1, $this->payload['messages']);
+        $this->assertStringStartsWith('[ID: 4] ', $this->payload['messages'][0]);
+    }
 }

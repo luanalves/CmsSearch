@@ -19,7 +19,8 @@ class CodeAndLabelFilter implements FilterApplierInterface
         if ($value === '' || !$collection instanceof AbstractDb) {
             return;
         }
-        $like = $collection->getConnection()->quote('%' . $value . '%');
+        // Escape LIKE wildcards so the keyword is matched literally.
+        $like = $collection->getConnection()->quote('%' . addcslashes($value, '\\%_') . '%');
         $collection->getSelect()->where(sprintf('(main_table.code LIKE %1$s OR lbl.label LIKE %1$s)', $like));
     }
 }

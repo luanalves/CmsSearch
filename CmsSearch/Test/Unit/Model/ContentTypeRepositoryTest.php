@@ -208,4 +208,34 @@ class ContentTypeRepositoryTest extends TestCase
 
         $this->assertSame($results, $this->repository->getList($criteria));
     }
+
+    /** @return array<string, array{0: int, 1: array<int, string>}> */
+    public static function invalidBounds(): array
+    {
+        return [
+            'negative sort order' => [-1, [0 => 'News']],
+            'sort order too big' => [65536, [0 => 'News']],
+            'default label too long' => [0, [0 => str_repeat('a', 256)]],
+            'store label too long' => [0, [0 => 'News', 2 => str_repeat('b', 256)]],
+        ];
+    }
+
+    /** @param array<int, string> $labels */
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidBounds')]
+    public function testSaveRejectsOutOfBoundsValues(int $sortOrder, array $labels): void
+    {
+        $this->resource->method('codeExists')->willReturn(false);
+        $this->resource->expects($this->never())->method('save');
+        $this->expectException(InputException::class);
+        $this->repository->save($this->type(null, 'news', $labels)->setSortOrder($sortOrder));
+    }
+
+    public function testSaveAcceptsTheBoundaryValues(): void
+    {
+        $type = $this->type(null, 'news', [0 => str_repeat('a', 255)])->setSortOrder(65535);
+        $this->resource->method('codeExists')->willReturn(false);
+        $this->resource->expects($this->once())->method('save')->with($type);
+
+        $this->repository->save($type);
+    }
 }

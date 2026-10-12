@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Ui\Component\Listing\Column;
 
+use Magento\Framework\Escaper;
 use Magento\Framework\UrlInterface;
 use Magento\Framework\View\Element\UiComponent\ContextInterface;
 use Magento\Framework\View\Element\UiComponentFactory;
@@ -15,6 +16,7 @@ class ContentTypeActions extends Column
         ContextInterface $context,
         UiComponentFactory $uiComponentFactory,
         private readonly UrlInterface $urlBuilder,
+        private readonly Escaper $escaper,
         array $components = [],
         array $data = []
     ) {
@@ -43,7 +45,7 @@ class ContentTypeActions extends Column
                     'post' => true,
                     'confirm' => [
                         'title' => __('Delete content type'),
-                        'message' => __('Are you sure you want to delete the content type "%1"?', $item['code']),
+                        'message' => __('Are you sure you want to delete the content type "%1"?', $this->escaper->escapeHtml((string) $item['code'])),
                     ],
                 ],
             ];

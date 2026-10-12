@@ -83,4 +83,20 @@ class DeleteGuardTest extends TestCase
         $this->guard->assertDeletable($this->type(null, 'news'));
         $this->addToAssertionCount(1);
     }
+
+    public function testListsOrphanClassificationRowsById(): void
+    {
+        $this->usageCounter->method('count')->with(4)->willReturn(2);
+        $this->usageCounter->method('firstPages')->with(4, 5)->willReturn([
+            ['page_id' => '1', 'title' => 'Home', 'identifier' => 'home'],
+            ['page_id' => '9', 'title' => '#9', 'identifier' => ''],
+        ]);
+
+        try {
+            $this->guard->assertDeletable($this->type(4, 'news'));
+            $this->fail('Expected ContentTypeInUseException');
+        } catch (ContentTypeInUseException $exception) {
+            $this->assertStringContainsString('Home [home], #9)', $exception->getMessage());
+        }
+    }
 }

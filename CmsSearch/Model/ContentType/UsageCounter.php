@@ -24,7 +24,7 @@ class UsageCounter
     }
 
     /**
-     * @return array<int, array{page_id: string, title: string, identifier: string}>
+     * @return array<int, array{page_id: string, title: string, identifier: string}> orphans: title '#<id>', identifier ''
      */
     public function firstPages(int $typeId, int $limit): array
     {
@@ -32,7 +32,7 @@ class UsageCounter
         // cms_page has one row per Staging version; group by page_id to list each Page once.
         $select = $connection->select()
             ->from(['pc' => $this->resource->getTableName(Tables::PAGE_CLASSIFICATION)], ['page_id'])
-            ->join(
+            ->joinLeft(
                 ['p' => $this->resource->getTableName('cms_page')],
                 'p.page_id = pc.page_id',
                 [
@@ -44,6 +44,14 @@ class UsageCounter
             ->group('pc.page_id')
             ->order('pc.page_id ASC')
             ->limit($limit);
-        return $connection->fetchAll($select);
+        $pages = $connection->fetchAll($select);
+        // Classification rows whose Page no longer exists are listed by id so count and list agree.
+        foreach ($pages as &$page) {
+            if ($page['title'] === null && $page['identifier'] === null) {
+                $page['title'] = '#' . $page['page_id'];
+                $page['identifier'] = '';
+            }
+        }
+        return $pages;
     }
 }

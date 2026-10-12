@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\ContentType;
 
+use Magento\Framework\Exception\LocalizedException;
 use Thedevkitchen\CmsSearch\Api\ContentTypeRepositoryInterface;
-use Thedevkitchen\CmsSearch\Exception\ContentTypeInUseException;
 
 class BulkDeleter
 {
@@ -14,7 +14,8 @@ class BulkDeleter
     }
 
     /**
-     * Deletes the free types and reports the ones blocked by linked Pages.
+     * Deletes the free types and reports, per item, the ones that could not be deleted
+     * (linked Pages, already gone, delete failure) without aborting the batch.
      *
      * @param array<int|string> $typeIds
      * @return array{deleted: int, blocked: string[]}
@@ -27,7 +28,7 @@ class BulkDeleter
             try {
                 $this->repository->deleteById($typeId);
                 $deleted++;
-            } catch (ContentTypeInUseException $exception) {
+            } catch (LocalizedException $exception) {
                 $blocked[] = $exception->getMessage();
             }
         }

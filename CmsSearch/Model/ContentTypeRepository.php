@@ -22,6 +22,8 @@ use Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\CollectionFactory;
 class ContentTypeRepository implements ContentTypeRepositoryInterface
 {
     private const CODE_PATTERN = '/^[a-z0-9_]{1,64}$/';
+    private const MAX_SORT_ORDER = 65535;
+    private const MAX_LABEL_LENGTH = 255;
 
     public function __construct(
         private readonly ContentTypeResource $resource,
@@ -138,9 +140,21 @@ class ContentTypeRepository implements ContentTypeRepositoryInterface
             throw new AlreadyExistsException(__('A content type with code "%1" already exists.', $code));
         }
 
+        $sortOrder = $type->getSortOrder();
+        if ($sortOrder < 0 || $sortOrder > self::MAX_SORT_ORDER) {
+            throw new InputException(__('The tab order must be between 0 and %1.', self::MAX_SORT_ORDER));
+        }
+
         $labels = $type->getLabels();
         if (trim((string) ($labels[0] ?? '')) === '') {
             throw new InputException(__('The default label is required.'));
+        }
+        foreach ($labels as $label) {
+            if (mb_strlen((string) $label) > self::MAX_LABEL_LENGTH) {
+                throw new InputException(
+                    __('Labels must have at most %1 characters.', self::MAX_LABEL_LENGTH)
+                );
+            }
         }
     }
 }

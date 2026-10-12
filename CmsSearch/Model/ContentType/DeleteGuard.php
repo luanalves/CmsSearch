@@ -32,7 +32,9 @@ class DeleteGuard
 
         $pages = $this->usageCounter->firstPages($typeId, self::SAMPLE_SIZE);
         $list = implode(', ', array_map(
-            static fn (array $page): string => sprintf('%s [%s]', $page['title'], $page['identifier']),
+            static fn (array $page): string => $page['identifier'] === ''
+                ? (string) $page['title']
+                : sprintf('%s [%s]', $page['title'], $page['identifier']),
             $pages
         ));
         if ($count > count($pages)) {

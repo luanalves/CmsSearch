@@ -38,9 +38,16 @@ class InlineEdit extends AbstractContentType implements HttpPostActionInterface
                 $type = $this->repository->getById((int) $typeId);
                 // Only the tab order and the status are editable inline; code and labels are not touched.
                 if (isset($row['sort_order'])) {
-                    $type->setSortOrder((int) $row['sort_order']);
+                    $sortOrder = (string) $row['sort_order'];
+                    if (!ctype_digit($sortOrder) || (int) $sortOrder > 65535) {
+                        throw new LocalizedException(__('The tab order must be between 0 and %1.', 65535));
+                    }
+                    $type->setSortOrder((int) $sortOrder);
                 }
                 if (isset($row['is_active'])) {
+                    if (!in_array($row['is_active'], ['0', '1', 0, 1], true)) {
+                        throw new LocalizedException(__('Please correct the data sent.'));
+                    }
                     $type->setIsActive((bool) (int) $row['is_active']);
                 }
                 $this->repository->save($type);

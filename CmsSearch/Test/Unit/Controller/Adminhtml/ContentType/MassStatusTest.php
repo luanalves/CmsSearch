@@ -91,4 +91,30 @@ class MassStatusTest extends TestCase
 
         $controller->execute();
     }
+
+    /** @return array<string, array{0: mixed}> */
+    public static function invalidStatuses(): array
+    {
+        return ['missing' => [null], 'empty' => [''], 'two' => ['2'], 'text' => ['abc'], 'negative' => ['-1']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidStatuses')]
+    public function testRejectsAnyStatusOtherThanZeroOrOneWithoutChangingAnything(mixed $status): void
+    {
+        $repository = $this->createMock(ContentTypeRepositoryInterface::class);
+        $repository->expects($this->never())->method('getById');
+        $repository->expects($this->never())->method('save');
+        $this->setUpContext(['status' => $status]);
+        $controller = new MassStatus(
+            $this->context,
+            $this->createMock(Filter::class),
+            $this->createMock(CollectionFactory::class),
+            $repository
+        );
+        $this->messages->expects($this->once())->method('addErrorMessage');
+        $this->messages->expects($this->never())->method('addSuccessMessage');
+        $this->redirect->expects($this->once())->method('setPath')->with('*/*/');
+
+        $controller->execute();
+    }
 }

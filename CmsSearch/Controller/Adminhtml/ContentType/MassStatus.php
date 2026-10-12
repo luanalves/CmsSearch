@@ -27,7 +27,12 @@ class MassStatus extends AbstractContentType implements HttpPostActionInterface
 
     public function execute(): ResultInterface
     {
-        $isActive = (bool) (int) $this->getRequest()->getParam('status');
+        $status = $this->getRequest()->getParam('status');
+        if (!in_array($status, ['0', '1', 0, 1], true)) {
+            $this->messageManager->addErrorMessage(__('Please correct the data sent.'));
+            return $this->resultRedirectFactory->create()->setPath('*/*/');
+        }
+        $isActive = (bool) (int) $status;
         $collection = $this->filter->getCollection($this->collectionFactory->create());
 
         $updated = 0;
