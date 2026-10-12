@@ -7,6 +7,12 @@
                 type="Thedevkitchen\CmsSearch\Model\ContentTypeRepository"/>
     <preference for="Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface"
                 type="Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults"/>
+    <preference for="Thedevkitchen\CmsSearch\Api\Data\ClassificationTermInterface"
+                type="Thedevkitchen\CmsSearch\Model\ClassificationTerm"/>
+    <preference for="Thedevkitchen\CmsSearch\Api\ClassificationTermRepositoryInterface"
+                type="Thedevkitchen\CmsSearch\Model\ClassificationTermRepository"/>
+    <preference for="Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface"
+                type="Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults"/>
     <type name="Thedevkitchen\CmsSearch\Model\ResourceModel\ContentType\Grid\Collection">
         <arguments>
             <argument name="mainTable" xsi:type="string">thedevkitchen_cmssearch_content_type</argument>
