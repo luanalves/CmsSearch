@@ -14,7 +14,12 @@ class FormDataMapperTest extends TestCase
     public function testToFormData(): void
     {
         $term = ClassificationTermBuilder::build(
-            fn (string $c) => $this->createMock($c), 9, 2, 'milho', 4, [0 => 'Milho', 3 => 'Corn']
+            fn (string $c) => $this->createMock($c),
+            9,
+            2,
+            'milho',
+            4,
+            [0 => 'Milho', 3 => 'Corn']
         )->setSortOrder(5)->setIsActive(false);
         $this->assertSame(
             [

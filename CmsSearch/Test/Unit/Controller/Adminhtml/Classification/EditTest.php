@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Test\Unit\Controller\Adminhtml\Classification;
 
+use Magento\Backend\Model\View\Result\Page;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\View\Page\Config;
 use Magento\Framework\View\Page\Title;
-use Magento\Backend\Model\View\Result\Page;
 use Magento\Framework\View\Result\PageFactory;
 use Magento\Store\Api\Data\WebsiteInterface;
 use Magento\Store\Model\StoreManagerInterface;

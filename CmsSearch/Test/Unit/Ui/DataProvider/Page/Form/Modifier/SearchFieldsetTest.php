@@ -100,11 +100,15 @@ class SearchFieldsetTest extends TestCase
         $this->assertSame('fieldset', $this->config($meta)['componentType']);
         $this->assertSame('Search', (string) $this->config($meta)['label']);
         $type = $this->config($meta, FormFields::TYPE);
-        $this->assertSame(['select', FormFields::TYPE, [['value' => 3, 'label' => 'News']]],
-            [$type['formElement'], $type['dataScope'], $type['options']]);
+        $this->assertSame(
+            ['select', FormFields::TYPE, [['value' => 3, 'label' => 'News']]],
+            [$type['formElement'], $type['dataScope'], $type['options']]
+        );
         $term = $this->config($meta, FormFields::TERM);
-        $this->assertSame(['select', FormFields::TERM, [['value' => 10, 'label' => 'Fitness']]],
-            [$term['formElement'], $term['dataScope'], $term['options']]);
+        $this->assertSame(
+            ['select', FormFields::TERM, [['value' => 10, 'label' => 'Fitness']]],
+            [$term['formElement'], $term['dataScope'], $term['options']]
+        );
         $marker = $this->config($meta, FormFields::MARKER);
         $this->assertSame([false, '1', FormFields::MARKER], [$marker['visible'], $marker['default'], $marker['dataScope']]);
     }
