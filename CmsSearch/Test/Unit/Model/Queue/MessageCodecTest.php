@@ -60,9 +60,47 @@ class MessageCodecTest extends TestCase
             'boolean id' => [self::body(['entity_id' => true]), 'field "entity_id"'],
             'unknown entity type' => [self::body(['entity_type' => 'blog']), 'Unknown entity type'],
             'zero id' => [self::body(['entity_id' => 0]), 'positive integer'],
+            'null body' => ['null', 'must be a JSON object'],
+            'empty body' => ['', 'not a valid JSON document'],
+            'number body' => ['7', 'must be a JSON object'],
+            'empty list body' => ['[]', 'must be a JSON object'],
+            'list body' => ['[1]', 'must be a JSON object'],
+            'numeric key body' => ['{"0":1}', 'must be a JSON object'],
+            'too deep' => ['{"a":{"b":{"c":1}}}', 'not a valid JSON document'],
+            'attempt 101' => [self::body(['attempt' => 101]), 'between 0 and 100'],
+            'negative store' => [self::body(['store_id' => -1]), 'store id must be'],
+            'negative timestamp' => [self::body(['timestamp' => -1]), 'timestamp must be between'],
+            'zero timestamp' => [self::body(['timestamp' => 0]), 'timestamp must be between'],
+            'huge int id (float on the wire)' => ['{"entity_type":"page","entity_id":1e30,"action":"save","store_id":null,"website_id":null,"timestamp":1760000000,"attempt":0}', 'field "entity_id"'],
+            'huge digits id' => ['{"entity_type":"page","entity_id":99999999999999999999,"action":"save","store_id":null,"website_id":null,"timestamp":1760000000,"attempt":0}', 'field "entity_id"'],
+            'id PHP_INT_MAX' => [self::body(['entity_id' => PHP_INT_MAX]), 'at most 32767'],
+            'page id 32768' => [self::body(['entity_id' => 32768]), 'at most 32767'],
+            'store 65536' => [self::body(['store_id' => 65536]), 'at most 65535'],
+            'website 65536' => [self::body(['website_id' => 65536]), 'at most 65535'],
+            'timestamp PHP_INT_MAX' => [self::body(['timestamp' => PHP_INT_MAX]), 'timestamp must be between'],
+            'numeric string keys instead of fields' => ['{"0":"page","1":7,"2":"save","3":null,"4":null,"5":1,"6":0}', 'must be a JSON object'],
         ];
     }
 
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function wrongTypes(): array
+    {
+        $allowed = ['entity_type' => ['string'], 'entity_id' => ['integer'], 'action' => ['string'],
+            'store_id' => ['integer', 'NULL'], 'website_id' => ['integer', 'NULL'], 'timestamp' => ['integer'],
+            'attempt' => ['integer']];
+        $values = ['string' => '1', 'boolean' => true, 'array' => [1], 'NULL' => null, 'double' => 1.5];
+        $cases = [];
+        foreach ($allowed as $field => $types) {
+            foreach ($values as $type => $value) {
+                if (!in_array($type, $types, true)) {
+                    $cases[$field . ' as ' . $type] = [self::body([$field => $value]), 'field "' . $field . '"'];
+                }
+            }
+        }
+        return $cases;
+    }
+
+    #[DataProvider('wrongTypes')]
     #[DataProvider('invalidBodies')]
     public function testDecodeRejectsAnythingButTheExactDocument(string $body, string $message): void
     {

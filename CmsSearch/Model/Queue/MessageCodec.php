@@ -9,7 +9,8 @@ use Thedevkitchen\CmsSearch\Exception\InvalidReindexMessageException;
 
 /**
  * Wire format of the topic (communication.xml declares request="string"): one JSON object with exactly the seven
- * fields of ReindexMessageInterface::toArray(), strictly typed. Anything else is a permanent error (DLQ, no retry).
+ * fields of ReindexMessageInterface::toArray(), strictly typed (flat document, depth 3). Duplicate JSON keys are an
+ * accepted limitation: json_decode keeps the last one.  Anything else is a permanent error (DLQ, no retry).
  */
 class MessageCodec
 {
@@ -35,18 +36,14 @@ class MessageCodec
     public function decode(string $body): ReindexMessageInterface
     {
         try {
-            $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+            $data = json_decode($body, true, 3, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             throw new InvalidReindexMessageException('The reindex message is not a valid JSON document.');
         }
         if (!is_array($data) || array_is_list($data)) {
             throw new InvalidReindexMessageException('The reindex message must be a JSON object.');
         }
-        $expected = array_keys(self::FIELDS);
-        $given = array_keys($data);
-        sort($expected);
-        sort($given);
-        if ($given !== $expected) {
+        if (array_diff_key(self::FIELDS, $data) !== [] || array_diff_key($data, self::FIELDS) !== []) {
             throw new InvalidReindexMessageException(sprintf(
                 'The reindex message must have exactly these fields: %s.',
                 implode(', ', array_keys(self::FIELDS))

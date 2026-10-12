@@ -15,6 +15,21 @@ final class ReindexMessage implements ReindexMessageInterface
     /** Sanity bound of the attempt counter (the configured cap is at most 10). */
     public const MAX_ATTEMPT = 100;
 
+    /** Upper bound of any entity id (unsigned 32-bit column range). */
+    public const MAX_ENTITY_ID = 4294967295;
+
+    /** Upper bound of a page id: page_id is a signed smallint (FK to sequence_cms_page). */
+    public const MAX_PAGE_ID = 32767;
+
+    /** Upper bound of store_id and website_id (smallint unsigned range). */
+    public const MAX_SCOPE_ID = 65535;
+
+    /** Fixed ceiling of the timestamp (2100-01-01 UTC); a value object cannot compare with "now". The floor is 1. */
+    public const MAX_TIMESTAMP = 4102444800;
+
+    /** Longest caller-supplied string echoed in an exception message. */
+    private const MAX_ECHO = 40;
+
     /**
      * @throws InvalidReindexMessageException
      */
@@ -29,30 +44,52 @@ final class ReindexMessage implements ReindexMessageInterface
     ) {
         $actions = self::ALLOWED_ACTIONS[$entityType] ?? null;
         if ($actions === null) {
-            throw new InvalidReindexMessageException(sprintf('Unknown entity type "%s".', $entityType));
-        }
-        if (!in_array($action, $actions, true)) {
             throw new InvalidReindexMessageException(
-                sprintf('Action "%s" is not valid for entity type "%s".', $action, $entityType)
+                sprintf('Unknown entity type %s.', self::quote($entityType))
             );
         }
-        if ($entityId <= 0) {
-            throw new InvalidReindexMessageException('The entity id must be a positive integer.');
+        if (!in_array($action, $actions, true)) {
+            throw new InvalidReindexMessageException(sprintf(
+                'Action %s is not valid for entity type %s.',
+                self::quote($action),
+                self::quote($entityType)
+            ));
         }
-        if ($storeId !== null && $storeId <= 0) {
-            throw new InvalidReindexMessageException('The store id must be a positive integer.');
+        $maxId = $entityType === self::ENTITY_PAGE ? self::MAX_PAGE_ID : self::MAX_ENTITY_ID;
+        if ($entityId <= 0 || $entityId > $maxId) {
+            throw new InvalidReindexMessageException(
+                sprintf('The entity id must be a positive integer of at most %d.', $maxId)
+            );
         }
-        if ($websiteId !== null && $websiteId <= 0) {
-            throw new InvalidReindexMessageException('The website id must be a positive integer.');
+        if ($storeId !== null && ($storeId <= 0 || $storeId > self::MAX_SCOPE_ID)) {
+            throw new InvalidReindexMessageException(
+                sprintf('The store id must be a positive integer of at most %d.', self::MAX_SCOPE_ID)
+            );
         }
-        if ($timestamp < 0) {
-            throw new InvalidReindexMessageException('The timestamp must not be negative.');
+        if ($websiteId !== null && ($websiteId <= 0 || $websiteId > self::MAX_SCOPE_ID)) {
+            throw new InvalidReindexMessageException(
+                sprintf('The website id must be a positive integer of at most %d.', self::MAX_SCOPE_ID)
+            );
+        }
+        if ($timestamp < 1 || $timestamp > self::MAX_TIMESTAMP) {
+            throw new InvalidReindexMessageException(
+                sprintf('The timestamp must be between 1 and %d.', self::MAX_TIMESTAMP)
+            );
         }
         if ($attempt < 0 || $attempt > self::MAX_ATTEMPT) {
             throw new InvalidReindexMessageException(
                 sprintf('The attempt must be between 0 and %d.', self::MAX_ATTEMPT)
             );
         }
+    }
+
+    /** Bounded, escaped (one line) rendering of a caller string for exception messages. */
+    private static function quote(string $value): string
+    {
+        return json_encode(
+            substr($value, 0, self::MAX_ECHO),
+            JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ) ?: '""';
     }
 
     public function getEntityType(): string
