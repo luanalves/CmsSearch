@@ -43,6 +43,7 @@ class IndexDefinition
         $analyzer = $this->getAnalyzer($store->getLocale());
         $keyword = ['type' => 'keyword'];
         $integer = ['type' => 'integer'];
+        $long = ['type' => 'long']; // entity/term/segment ids are unsigned int in MySQL (up to 4294967295)
         return [
             'settings' => ['index' => ['number_of_shards' => 1]],
             'mappings' => [
@@ -55,11 +56,11 @@ class IndexDefinition
                 ],
                 'properties' => [
                     'entity_type' => $keyword,
-                    'entity_id' => $integer,
+                    'entity_id' => $long,
                     'source_types' => $keyword,
                     'content_type_code' => $keyword,
-                    'classification_term_id' => $integer,
-                    'classification_ancestor_ids' => $integer,
+                    'classification_term_id' => $long,
+                    'classification_ancestor_ids' => $long,
                     'classification_path' => $keyword,
                     'title' => [
                         'type' => 'text',
@@ -72,7 +73,7 @@ class IndexDefinition
                     'image' => ['type' => 'keyword', 'index' => false],
                     'store_view_id' => $integer,
                     'website_id' => $integer,
-                    'segment_ids' => $integer,
+                    'segment_ids' => $long,
                     'updated_at' => [
                         'type' => 'date',
                         'format' => 'yyyy-MM-dd HH:mm:ss||strict_date_optional_time||epoch_second',

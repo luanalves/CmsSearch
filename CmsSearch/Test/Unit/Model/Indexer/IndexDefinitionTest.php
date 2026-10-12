@@ -54,7 +54,11 @@ class IndexDefinitionTest extends TestCase
         foreach (['entity_type', 'source_types', 'content_type_code', 'classification_path'] as $keyword) {
             $this->assertSame('keyword', $properties[$keyword]['type'], $keyword);
         }
-        foreach (['entity_id', 'classification_term_id', 'classification_ancestor_ids', 'store_view_id', 'website_id', 'segment_ids'] as $integer) {
+        // ids that may exceed 2^31-1 (message bounds allow 4294967295; Plan 6 product/category, segment ids unsigned int)
+        foreach (['entity_id', 'classification_term_id', 'classification_ancestor_ids', 'segment_ids'] as $long) {
+            $this->assertSame('long', $properties[$long]['type'], $long);
+        }
+        foreach (['store_view_id', 'website_id'] as $integer) {
             $this->assertSame('integer', $properties[$integer]['type'], $integer);
         }
         $this->assertSame('date', $properties['updated_at']['type']);
