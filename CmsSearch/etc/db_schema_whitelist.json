@@ -34,7 +34,8 @@
         },
         "constraint": {
             "PRIMARY": true,
-            "FK_1E5D9C4CB6069094FF750BCFAC327201": true
+            "FK_1E5D9C4CB6069094FF750BCFAC327201": true,
+            "FK_F07512FE8B6F6F6491A76879E6C5CA22": true
         }
     }
 }
