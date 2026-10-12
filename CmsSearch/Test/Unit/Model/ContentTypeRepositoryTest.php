@@ -55,7 +55,7 @@ class ContentTypeRepositoryTest extends TestCase
 
     private function type(?int $id, string $code, array $labels = [0 => 'News']): ContentType
     {
-        return ContentTypeBuilder::build($id, $code, $labels);
+        return ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), $id, $code, $labels);
     }
 
     public function testSaveStoresAValidNewType(): void

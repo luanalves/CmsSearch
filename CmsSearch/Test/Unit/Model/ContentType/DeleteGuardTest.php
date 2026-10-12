@@ -27,7 +27,7 @@ class DeleteGuardTest extends TestCase
         $this->usageCounter->method('count')->with(4)->willReturn(0);
         $this->usageCounter->expects($this->never())->method('firstPages');
 
-        $this->guard->assertDeletable(ContentTypeBuilder::build(4, 'news'));
+        $this->guard->assertDeletable(ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), 4, 'news'));
         $this->addToAssertionCount(1);
     }
 
@@ -40,7 +40,7 @@ class DeleteGuardTest extends TestCase
         ]);
 
         try {
-            $this->guard->assertDeletable(ContentTypeBuilder::build(4, 'news'));
+            $this->guard->assertDeletable(ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), 4, 'news'));
             $this->fail('Expected ContentTypeInUseException');
         } catch (ContentTypeInUseException $exception) {
             $message = $exception->getMessage();
@@ -62,7 +62,7 @@ class DeleteGuardTest extends TestCase
         $this->usageCounter->method('firstPages')->with(4, 5)->willReturn($sample);
 
         try {
-            $this->guard->assertDeletable(ContentTypeBuilder::build(4, 'news'));
+            $this->guard->assertDeletable(ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), 4, 'news'));
             $this->fail('Expected ContentTypeInUseException');
         } catch (ContentTypeInUseException $exception) {
             $this->assertStringContainsString('8 CMS page(s)', $exception->getMessage());
@@ -74,7 +74,7 @@ class DeleteGuardTest extends TestCase
     {
         $this->usageCounter->expects($this->never())->method('count');
 
-        $this->guard->assertDeletable(ContentTypeBuilder::build(null, 'news'));
+        $this->guard->assertDeletable(ContentTypeBuilder::build(fn (string $c) => $this->createMock($c), null, 'news'));
         $this->addToAssertionCount(1);
     }
 }
