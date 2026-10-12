@@ -213,7 +213,7 @@ class DocumentBuilderTest extends TestCase
 
     public function testTheContentIsExtractedOnceAndBuildsADocumentPerStoreView(): void
     {
-        $extractor = new class extends TextExtractor {
+        $extractor = new class() extends TextExtractor {
             public int $calls = 0;
 
             public function extract(string $html): \Thedevkitchen\CmsSearch\Model\Indexer\Text\ExtractedContent
@@ -237,7 +237,7 @@ class DocumentBuilderTest extends TestCase
 
     public function testATruncatedExtractionIsLoggedByPageIdOnly(): void
     {
-        $logger = new class extends AbstractLogger {
+        $logger = new class() extends AbstractLogger {
             /** @var list<array{0: string, 1: string, 2: array<mixed>}> */
             public array $records = [];
 

@@ -94,7 +94,7 @@ class PageIndexerTest extends TestCase
     private function indexer(int $batchSize = 200): PageIndexer
     {
         $prepared = &$this->prepared;
-        $builder = new class (new TextExtractor(), new NullLogger(), $prepared) extends DocumentBuilder {
+        $builder = new class(new TextExtractor(), new NullLogger(), $prepared) extends DocumentBuilder {
             /** @param array<int, int> $calls */
             public function __construct(TextExtractor $extractor, NullLogger $logger, private array &$calls)
             {
