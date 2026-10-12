@@ -49,4 +49,25 @@
             <argument name="reporting" xsi:type="object">Thedevkitchen\CmsSearch\Ui\DataProvider\ContentType\ContentTypeReporting</argument>
         </arguments>
     </virtualType>
+    <!-- Plan 3: reindex queue. The processor is the Plan 4 extension point (replace this preference). -->
+    <preference for="Thedevkitchen\CmsSearch\Model\Queue\ReindexProcessorInterface"
+                type="Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor"/>
+    <virtualType name="Thedevkitchen\CmsSearch\Model\Queue\Log\Handler" type="Magento\Framework\Logger\Handler\Base">
+        <arguments>
+            <argument name="fileName" xsi:type="string">/var/log/cmssearch_reindex.log</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Thedevkitchen\CmsSearch\Model\Queue\Log\Logger" type="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="name" xsi:type="string">cmssearch_reindex</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="file" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Handler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <type name="Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
 </config>

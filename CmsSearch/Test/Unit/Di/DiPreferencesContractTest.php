@@ -11,6 +11,7 @@ use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
+use Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
 
@@ -20,6 +21,7 @@ use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
 class DiPreferencesContractTest extends TestCase
 {
     private const POOL = 'Thedevkitchen\\CmsSearch\\Ui\\DataProvider\\Page\\Form\\Modifier\\Pool';
+    private const LOGGER = 'Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Logger';
 
     /** @return array<string, array{0: string}> */
     public static function files(): array
@@ -169,5 +171,19 @@ class DiPreferencesContractTest extends TestCase
                 );
             }
         }
+    }
+
+    public function testTheProcessorIsAReplaceablePreferenceAndTheQueueLogsToItsOwnFile(): void
+    {
+        $di = $this->di('etc/di.xml');
+        $preference = $di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Model\\Queue\\ReindexProcessorInterface"]/@type');
+        $this->assertSame([NullReindexProcessor::class], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $preference));
+        $logger = $di->xpath('//type[@name="Thedevkitchen\\CmsSearch\\Model\\Queue\\ReindexHandler"]/arguments/argument[@name="logger"]');
+        $this->assertCount(1, $logger);
+        $this->assertSame(self::LOGGER, ltrim((string) $logger[0], '\\'));
+        $handlers = $di->xpath('//virtualType[@name="' . self::LOGGER . '"]/arguments/argument[@name="handlers"]/item');
+        $this->assertSame(['Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Handler'], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $handlers));
+        $file = $di->xpath('//virtualType[@name="Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Handler"]/arguments/argument[@name="fileName"]');
+        $this->assertSame('/var/log/cmssearch_reindex.log', (string) $file[0]);
     }
 }
