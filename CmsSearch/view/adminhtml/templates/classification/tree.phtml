@@ -1,0 +1,74 @@
+<?php
+/**
+ * @var \Magento\Backend\Block\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+/** @var \Thedevkitchen\CmsSearch\ViewModel\Adminhtml\ClassificationTree $viewModel */
+$viewModel = $block->getData('view_model');
+$selected = $viewModel->getSelectedWebsiteId();
+$rows = $viewModel->getRows();
+$canManage = $viewModel->canManage();
+?>
+<div class="cmssearch-classification" data-role="cmssearch-classification">
+    <nav class="admin__data-grid-header" aria-label="<?= $escaper->escapeHtmlAttr(__('Website')) ?>">
+        <strong><?= $escaper->escapeHtml(__('Website')) ?>:</strong>
+        <?php foreach ($viewModel->getWebsites() as $website): ?>
+            <a href="<?= $escaper->escapeUrl($viewModel->getSwitchUrl($website['id'])) ?>"
+               data-website-id="<?= (int) $website['id'] ?>"
+               <?= $website['id'] === $selected ? 'aria-current="page"' : '' ?>
+               class="action-default<?= $website['id'] === $selected ? ' active' : '' ?>"><?=
+                $escaper->escapeHtml($website['name']) ?></a>
+        <?php endforeach; ?>
+    </nav>
+    <?php if ($canManage && $selected > 0): ?>
+        <p>
+            <a class="action-primary" data-role="add-root-term"
+               href="<?= $escaper->escapeUrl($viewModel->getNewUrl(null)) ?>"><?=
+                $escaper->escapeHtml(__('Add Root Term')) ?></a>
+        </p>
+    <?php endif; ?>
+    <?php if (!$rows): ?>
+        <p data-role="empty-tree"><?= $escaper->escapeHtml(__('This website has no classification terms yet.')) ?></p>
+    <?php else: ?>
+        <table class="data-grid" data-role="classification-tree">
+            <thead>
+                <tr>
+                    <th class="data-grid-th"><?= $escaper->escapeHtml(__('Term')) ?></th>
+                    <th class="data-grid-th"><?= $escaper->escapeHtml(__('Code')) ?></th>
+                    <th class="data-grid-th"><?= $escaper->escapeHtml(__('Status')) ?></th>
+                    <th class="data-grid-th"><?= $escaper->escapeHtml(__('Sort order')) ?></th>
+                    <th class="data-grid-th"><?= $escaper->escapeHtml(__('Linked pages')) ?></th>
+                    <th class="data-grid-th"><?= $escaper->escapeHtml(__('Action')) ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($rows as $row): ?>
+                <tr class="data-row"
+                    data-term-id="<?= (int) $row['term_id'] ?>"
+                    data-term-code="<?= $escaper->escapeHtmlAttr($row['code']) ?>"
+                    data-path="<?= $escaper->escapeHtmlAttr($row['path']) ?>"
+                    data-level="<?= (int) $row['level'] ?>">
+                    <td>
+                        <span aria-hidden="true"><?= str_repeat('&mdash; ', (int) $row['level']) ?></span>
+                        <span data-role="term-label"><?= $escaper->escapeHtml($row['label']) ?></span>
+                    </td>
+                    <td><?= $escaper->escapeHtml($row['code']) ?></td>
+                    <td data-role="term-status"><?=
+                        $escaper->escapeHtml($row['is_active'] ? __('Enabled') : __('Disabled')) ?></td>
+                    <td><?= (int) $row['sort_order'] ?></td>
+                    <td data-role="term-pages"><?= (int) $row['pages'] ?></td>
+                    <td>
+                        <a href="<?= $escaper->escapeUrl($viewModel->getEditUrl((int) $row['term_id'])) ?>"><?=
+                            $escaper->escapeHtml(__('Edit')) ?></a>
+                        <?php if ($canManage): ?>
+                            | <a data-role="add-child"
+                                 href="<?= $escaper->escapeUrl($viewModel->getNewUrl((int) $row['term_id'])) ?>"><?=
+                                $escaper->escapeHtml(__('Add child')) ?></a>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>

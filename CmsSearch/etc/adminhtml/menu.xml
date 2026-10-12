@@ -8,5 +8,8 @@
         <add id="Thedevkitchen_CmsSearch::content_types" title="Content Types" translate="title"
              module="Thedevkitchen_CmsSearch" sortOrder="10" parent="Thedevkitchen_CmsSearch::root"
              action="thedevkitchen_cmssearch/contenttype" resource="Thedevkitchen_CmsSearch::content_types"/>
+        <add id="Thedevkitchen_CmsSearch::classification" title="Classification" translate="title"
+             module="Thedevkitchen_CmsSearch" sortOrder="20" parent="Thedevkitchen_CmsSearch::root"
+             action="thedevkitchen_cmssearch/classification" resource="Thedevkitchen_CmsSearch::classification"/>
     </menu>
 </config>

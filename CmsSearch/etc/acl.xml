@@ -11,6 +11,9 @@
                             <resource id="Thedevkitchen_CmsSearch::content_types_edit" title="Edit" translate="title" sortOrder="20"/>
                             <resource id="Thedevkitchen_CmsSearch::content_types_delete" title="Delete" translate="title" sortOrder="30"/>
                         </resource>
+                        <resource id="Thedevkitchen_CmsSearch::classification" title="Classification" translate="title" sortOrder="20">
+                            <resource id="Thedevkitchen_CmsSearch::classification_manage" title="Manage (create, edit, move, delete)" translate="title" sortOrder="10"/>
+                        </resource>
                     </resource>
                 </resource>
             </resource>
