@@ -30,12 +30,14 @@
             "term_id": true
         },
         "index": {
-            "THEDEVKITCHEN_CMSSEARCH_PAGE_CLASSIFICATION_TYPE_ID": true
+            "THEDEVKITCHEN_CMSSEARCH_PAGE_CLASSIFICATION_TYPE_ID": true,
+            "THEDEVKITCHEN_CMSSEARCH_PAGE_CLASSIFICATION_TERM_ID": true
         },
         "constraint": {
             "PRIMARY": true,
             "FK_1E5D9C4CB6069094FF750BCFAC327201": true,
-            "FK_F07512FE8B6F6F6491A76879E6C5CA22": true
+            "FK_F07512FE8B6F6F6491A76879E6C5CA22": true,
+            "FK_94D36E35BF36E0AC48219CA75649C8A6": true
         }
     },
     "thedevkitchen_cmssearch_classification_term": {

@@ -121,4 +121,14 @@ class SchemaContractTest extends TestCase
             $this->foreignKey($table, 'store_id')
         );
     }
+
+    public function testPageLinkReferencesTheTermWithoutCascade(): void
+    {
+        $this->assertSame(
+            ['table' => Tables::CLASSIFICATION_TERM, 'column' => 'term_id', 'onDelete' => 'NO ACTION'],
+            $this->foreignKey(Tables::PAGE_CLASSIFICATION, 'term_id')
+        );
+        $indexed = array_map('strval', $this->table(Tables::PAGE_CLASSIFICATION)->xpath('index/column/@name'));
+        $this->assertContains('term_id', $indexed);
+    }
 }

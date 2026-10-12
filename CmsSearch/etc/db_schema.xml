@@ -34,7 +34,7 @@
     <table name="thedevkitchen_cmssearch_page_classification" resource="default" engine="innodb" comment="CMS Search type and term of a CMS Page">
         <column xsi:type="smallint" name="page_id" unsigned="false" nullable="false" comment="cms_page.page_id (stable under Staging)"/>
         <column xsi:type="int" name="type_id" unsigned="true" nullable="false" comment="Content type"/>
-        <column xsi:type="int" name="term_id" unsigned="true" nullable="false" comment="Classification term (FK added in Plan 2)"/>
+        <column xsi:type="int" name="term_id" unsigned="true" nullable="false" comment="Classification term"/>
         <constraint xsi:type="primary" referenceId="PRIMARY">
             <column name="page_id"/>
         </constraint>
@@ -44,8 +44,14 @@
         <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_PAGECLS_PAGE_ID_SEQUENCE_CMS_PAGE_SEQUENCE_VALUE"
                     table="thedevkitchen_cmssearch_page_classification" column="page_id"
                     referenceTable="sequence_cms_page" referenceColumn="sequence_value" onDelete="CASCADE"/>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_PAGECLS_TERM_ID"
+                    table="thedevkitchen_cmssearch_page_classification" column="term_id"
+                    referenceTable="thedevkitchen_cmssearch_classification_term" referenceColumn="term_id" onDelete="NO ACTION"/>
         <index referenceId="THEDEVKITCHEN_CMSSEARCH_PAGECLS_TYPE_ID_IDX" indexType="btree">
             <column name="type_id"/>
+        </index>
+        <index referenceId="THEDEVKITCHEN_CMSSEARCH_PAGECLS_TERM_ID_IDX" indexType="btree">
+            <column name="term_id"/>
         </index>
     </table>
 
