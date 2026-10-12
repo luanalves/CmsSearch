@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Block\Adminhtml\ContentType\Edit;
 
+use Thedevkitchen\CmsSearch\Controller\Adminhtml\ContentType\AbstractContentType;
 use Magento\Framework\View\Element\UiComponent\Control\ButtonProviderInterface;
 
 class DeleteButton extends GenericButton implements ButtonProviderInterface
@@ -14,17 +15,17 @@ class DeleteButton extends GenericButton implements ButtonProviderInterface
     public function getButtonData(): array
     {
         $typeId = $this->getTypeId();
-        if ($typeId === null) {
+        if ($typeId === null || !$this->isAllowed(AbstractContentType::RESOURCE_DELETE)) {
             return [];
         }
         return [
             'label' => __('Delete'),
             'class' => 'delete',
             'on_click' => sprintf(
-                "deleteConfirm('%s', '%s', %s)",
-                __('Are you sure you want to delete this content type?'),
-                $this->getUrl('*/*/delete'),
-                json_encode(['data' => ['type_id' => $typeId]])
+                'deleteConfirm(%s, %s, %s)',
+                json_encode((string) __('Are you sure you want to delete this content type?'), JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP),
+                json_encode($this->getUrl('*/*/delete'), JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP),
+                json_encode(['data' => ['type_id' => $typeId]], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP)
             ),
             'sort_order' => 20,
         ];

@@ -35,10 +35,18 @@ class Save extends AbstractContentType implements HttpPostActionInterface
      */
     protected function _isAllowed(): bool
     {
-        $resource = (int) $this->getRequest()->getParam('type_id') > 0
-            ? self::RESOURCE_EDIT
-            : self::RESOURCE_CREATE;
+        $resource = $this->resolveTypeId() > 0 ? self::RESOURCE_EDIT : self::RESOURCE_CREATE;
         return $this->_authorization->isAllowed($resource);
+    }
+
+    /**
+     * Single source of truth for the id of the type being saved: the POST body wins, then the request param.
+     * Both the permission check and execute() use it, so the right required always matches the type touched.
+     */
+    private function resolveTypeId(): int
+    {
+        $postId = (int) (((array) $this->getRequest()->getPostValue())['type_id'] ?? 0);
+        return $postId > 0 ? $postId : max(0, (int) $this->getRequest()->getParam('type_id'));
     }
 
     public function execute(): ResultInterface
@@ -49,7 +57,11 @@ class Save extends AbstractContentType implements HttpPostActionInterface
             return $redirect->setPath('*/*/');
         }
 
-        $typeId = (int) ($data['type_id'] ?? 0);
+        $typeId = $this->resolveTypeId();
+        if ($typeId > 0 && !$this->_authorization->isAllowed(self::RESOURCE_EDIT)) {
+            $this->messageManager->addErrorMessage(__('You are not allowed to edit content types.'));
+            return $redirect->setPath('*/*/');
+        }
         try {
             $type = $typeId > 0 ? $this->repository->getById($typeId) : $this->typeFactory->create();
             if ($typeId === 0) {

@@ -13,6 +13,9 @@ class SaveAndContinueButton extends GenericButton implements ButtonProviderInter
      */
     public function getButtonData(): array
     {
+        if (!$this->canSave()) {
+            return [];
+        }
         return [
             'label' => __('Save and Continue Edit'),
             'class' => 'save',

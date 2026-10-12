@@ -13,6 +13,9 @@ class SaveButton extends GenericButton implements ButtonProviderInterface
      */
     public function getButtonData(): array
     {
+        if (!$this->canSave()) {
+            return [];
+        }
         return [
             'label' => __('Save'),
             'class' => 'save primary',

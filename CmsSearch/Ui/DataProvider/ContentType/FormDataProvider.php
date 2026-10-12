@@ -59,14 +59,17 @@ class FormDataProvider extends AbstractDataProvider
      */
     public function getData(): array
     {
+        $requestedId = (int) $this->request->getParam($this->requestFieldName);
         $persisted = $this->dataPersistor->get(Save::PERSISTOR_KEY);
         if (!empty($persisted)) {
-            $this->dataPersistor->clear(Save::PERSISTOR_KEY);
             $persistedId = (int) ($persisted['type_id'] ?? 0);
-            return [$persistedId > 0 ? $persistedId : '' => $persisted];
+            if ($persistedId === $requestedId) {
+                $this->dataPersistor->clear(Save::PERSISTOR_KEY);
+                return [$persistedId > 0 ? $persistedId : '' => $persisted];
+            }
         }
 
-        $typeId = (int) $this->request->getParam($this->requestFieldName);
+        $typeId = $requestedId;
         if ($typeId <= 0) {
             return [];
         }
