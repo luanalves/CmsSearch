@@ -1,0 +1,14 @@
+{
+    "name": "thedevkitchen/module-cms-search",
+    "description": "Indexes CMS content in OpenSearch and shows it in tabs on the search result page",
+    "type": "magento2-module",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {
+            "Thedevkitchen\\CmsSearch\\": ""
+        }
+    }
+}

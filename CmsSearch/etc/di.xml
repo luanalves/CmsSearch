@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="Thedevkitchen\CmsSearch\Api\Data\ContentTypeInterface"
+                type="Thedevkitchen\CmsSearch\Model\ContentType"/>
+    <preference for="Thedevkitchen\CmsSearch\Api\ContentTypeRepositoryInterface"
+                type="Thedevkitchen\CmsSearch\Model\ContentTypeRepository"/>
+    <preference for="Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface"
+                type="Magento\Framework\Api\SearchResults"/>
+</config>
