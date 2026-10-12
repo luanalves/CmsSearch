@@ -95,4 +95,12 @@
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
+    <!-- Staging (D9): scheduled page content that starts or ends asks for a page reindex. -->
+    <type name="Magento\Staging\Model\StagingApplier">
+        <arguments>
+            <argument name="postProcessors" xsi:type="array">
+                <item name="thedevkitchen_cmssearch_page" xsi:type="object">Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied</item>
+            </argument>
+        </arguments>
+    </type>
 </config>

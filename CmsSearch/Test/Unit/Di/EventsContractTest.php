@@ -6,6 +6,7 @@ namespace Thedevkitchen\CmsSearch\Test\Unit\Di;
 
 use Magento\Framework\Event\ObserverInterface;
 use PHPUnit\Framework\TestCase;
+use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
 use Thedevkitchen\CmsSearch\Observer\SavePageClassification;
 
 /**
@@ -42,8 +43,21 @@ class EventsContractTest extends TestCase
             static fn ($node): string => ltrim((string) $node, '\\'),
             $xml->xpath('//event[@name="cms_page_save_after"]/observer/@instance')
         );
-        $this->assertSame([SavePageClassification::class], $instances);
-        // Publishing reindex messages after commit is Plan 3; this plan must not listen to *_commit_after.
+        $this->assertSame([SavePageClassification::class, PublishPageReindex::class], $instances);
+        // Reindex requests are made inside the transaction and sent by the after-commit flush plugin, which also
+        // merges duplicates; a *_commit_after observer would send a second, unmerged message.
         $this->assertSame([], $xml->xpath('//event[contains(@name, "commit_after")]'));
+    }
+
+    public function testEveryPageWriteAsksForAReindex(): void
+    {
+        $xml = simplexml_load_file(dirname(__DIR__, 3) . '/etc/events.xml');
+        foreach (['cms_page_save_after', 'cms_page_delete_after'] as $event) {
+            $instances = array_map(
+                static fn ($node): string => ltrim((string) $node, '\\'),
+                $xml->xpath('//event[@name="' . $event . '"]/observer/@instance')
+            );
+            $this->assertContains(PublishPageReindex::class, $instances, $event);
+        }
     }
 }

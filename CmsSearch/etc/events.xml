@@ -5,5 +5,12 @@
     <event name="cms_page_save_after">
         <observer name="thedevkitchen_cmssearch_save_page_classification"
                   instance="Thedevkitchen\CmsSearch\Observer\SavePageClassification"/>
+        <!-- Plan 3: asks for a page reindex; sent after the outermost COMMIT, dropped on ROLLBACK. -->
+        <observer name="thedevkitchen_cmssearch_publish_page_reindex"
+                  instance="Thedevkitchen\CmsSearch\Observer\PublishPageReindex"/>
+    </event>
+    <event name="cms_page_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_page_reindex"
+                  instance="Thedevkitchen\CmsSearch\Observer\PublishPageReindex"/>
     </event>
 </config>

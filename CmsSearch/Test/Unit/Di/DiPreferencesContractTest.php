@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Test\Unit\Di;
 
+use Magento\Staging\Model\StagingApplier\PostProcessorInterface;
 use Magento\Ui\DataProvider\Modifier\ModifierInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -15,6 +16,7 @@ use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\NullReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
+use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
 use Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
@@ -245,5 +247,17 @@ class DiPreferencesContractTest extends TestCase
                 "$file configures handlers for every Monolog\\Logger; the queue logger would inherit them"
             );
         }
+    }
+
+    public function testOurPostProcessorIsRegisteredOnTheStagingApplier(): void
+    {
+        $items = $this->di('etc/di.xml')->xpath(
+            '//type[@name="Magento\\Staging\\Model\\StagingApplier"]/arguments/argument[@name="postProcessors"]/item'
+        );
+        $this->assertCount(1, $items);
+        $this->assertSame('thedevkitchen_cmssearch_page', (string) $items[0]['name']);
+        $this->assertSame('object', (string) $items[0]->attributes('xsi', true)->type);
+        $this->assertSame(PageVersionApplied::class, ltrim((string) $items[0], '\\'));
+        $this->assertTrue(is_a(PageVersionApplied::class, PostProcessorInterface::class, true));
     }
 }
