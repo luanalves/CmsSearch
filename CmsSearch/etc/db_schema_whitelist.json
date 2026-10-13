@@ -72,5 +72,43 @@
             "FK_50F152AA67E287F33CA6EB15DB21B5E1": true,
             "FK_0733035D361502566E90D71958C8DA92": true
         }
+    },
+    "thedevkitchen_cmssearch_block_reference": {
+        "column": {
+            "reference_id": true,
+            "store_id": true,
+            "host_type": true,
+            "host_id": true,
+            "block_kind": true,
+            "block_id": true,
+            "block_identifier": true,
+            "source": true,
+            "source_id": true,
+            "depth": true,
+            "segment_ids": true
+        },
+        "index": {
+            "THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_BLOCK_KIND_BLOCK_ID": true,
+            "IDX_28ABDDE2B80B32C3408A44B4547BFE79": true,
+            "THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_SOURCE_SOURCE_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "UNQ_41C5ACABDC594906E3F4040558721A60": true,
+            "THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_STORE_ID_STORE_STORE_ID": true
+        }
+    },
+    "thedevkitchen_cmssearch_product_block_text": {
+        "column": {
+            "product_id": true,
+            "store_id": true,
+            "text": true,
+            "text_hash": true,
+            "updated_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "THEDEVKITCHEN_CMSSRCH_PRD_BLOCK_TEXT_STORE_ID_STORE_STORE_ID": true
+        }
     }
 }

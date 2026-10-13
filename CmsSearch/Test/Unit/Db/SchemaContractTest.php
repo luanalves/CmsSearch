@@ -165,4 +165,59 @@ class SchemaContractTest extends TestCase
             }
         }
     }
+
+    public function testBlockReferenceColumnsUniqueKeyAndStoreCascade(): void
+    {
+        $table = Tables::BLOCK_REFERENCE;
+        $types = [
+            'reference_id' => 'int', 'store_id' => 'smallint', 'host_type' => 'varchar', 'host_id' => 'int',
+            'block_kind' => 'varchar', 'block_id' => 'int', 'block_identifier' => 'varchar', 'source' => 'varchar',
+            'source_id' => 'int', 'depth' => 'smallint', 'segment_ids' => 'varchar',
+        ];
+        foreach ($types as $column => $type) {
+            $this->assertSame($type, $this->column($table, $column)['type'], $column);
+        }
+        $this->assertSame('true', $this->column($table, 'reference_id')['identity'] ?? null);
+        $this->assertSame('255', $this->column($table, 'block_identifier')['length'] ?? null);
+        $this->assertSame('', $this->column($table, 'block_identifier')['default'] ?? null);
+        $this->assertSame('false', $this->column($table, 'block_identifier')['nullable'] ?? null);
+        $this->assertSame('true', $this->column($table, 'segment_ids')['nullable'] ?? null);
+        $this->assertSame(
+            [['store_id', 'host_type', 'host_id', 'block_kind', 'block_id', 'block_identifier', 'source', 'source_id']],
+            $this->uniqueKeys($table)
+        );
+        $this->assertSame(['table' => 'store', 'column' => 'store_id', 'onDelete' => 'CASCADE'], $this->foreignKey($table, 'store_id'));
+        // hosts are versioned by row_id and a deleted block must still lead to its hosts: no FK on purpose
+        $this->assertNull($this->foreignKey($table, 'host_id'));
+        $this->assertNull($this->foreignKey($table, 'block_id'));
+    }
+
+    public function testTheGraphHasItsReverseLookupIndexes(): void
+    {
+        $indexes = [];
+        foreach ($this->table(Tables::BLOCK_REFERENCE)->xpath('index') as $index) {
+            $indexes[] = array_map('strval', $index->xpath('column/@name'));
+        }
+        $this->assertSame([['block_kind', 'block_id'], ['block_kind', 'block_identifier'], ['source', 'source_id']], $indexes);
+    }
+
+    public function testProductBlockTextColumnsPrimaryKeyAndStoreCascade(): void
+    {
+        $table = Tables::PRODUCT_BLOCK_TEXT;
+        $types = ['product_id' => 'int', 'store_id' => 'smallint', 'text' => 'mediumtext', 'text_hash' => 'varchar', 'updated_at' => 'timestamp'];
+        foreach ($types as $column => $type) {
+            $this->assertSame($type, $this->column($table, $column)['type'], $column);
+        }
+        $this->assertSame('40', $this->column($table, 'text_hash')['length'] ?? null);
+        $this->assertSame('false', $this->column($table, 'text')['nullable'] ?? null);
+        $primary = [];
+        foreach ($this->table($table)->xpath('constraint') as $constraint) {
+            if ((string) $constraint->attributes(self::XSI)['type'] === 'primary') {
+                $primary = array_map('strval', $constraint->xpath('column/@name'));
+            }
+        }
+        $this->assertSame(['product_id', 'store_id'], $primary);
+        $this->assertSame(['table' => 'store', 'column' => 'store_id', 'onDelete' => 'CASCADE'], $this->foreignKey($table, 'store_id'));
+        $this->assertNull($this->foreignKey($table, 'product_id'));
+    }
 }

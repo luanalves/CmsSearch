@@ -97,4 +97,61 @@
                     table="thedevkitchen_cmssearch_classification_term_label" column="store_id"
                     referenceTable="store" referenceColumn="store_id" onDelete="CASCADE"/>
     </table>
+    <table name="thedevkitchen_cmssearch_block_reference" resource="default" engine="innodb"
+           comment="CMS Search: Blocks and Dynamic Blocks published by a host (CMS page, product, category) per store view">
+        <column xsi:type="int" name="reference_id" unsigned="true" nullable="false" identity="true" comment="Reference ID"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" comment="Store view"/>
+        <column xsi:type="varchar" name="host_type" nullable="false" length="16" comment="page | product | category"/>
+        <column xsi:type="int" name="host_id" unsigned="true" nullable="false" comment="page_id | product or category entity_id"/>
+        <column xsi:type="varchar" name="block_kind" nullable="false" length="16" comment="block | dynamic_block"/>
+        <column xsi:type="int" name="block_id" unsigned="true" nullable="false" default="0" comment="block_id | banner_id; 0 = identifier not resolved"/>
+        <column xsi:type="varchar" name="block_identifier" nullable="false" length="255" default="" comment="Identifier when referenced by identifier"/>
+        <column xsi:type="varchar" name="source" nullable="false" length="16" comment="content | widget"/>
+        <column xsi:type="int" name="source_id" unsigned="true" nullable="false" default="0" comment="Widget instance_id; 0 for content"/>
+        <column xsi:type="smallint" name="depth" unsigned="true" nullable="false" default="0" comment="0 = published by the host itself"/>
+        <column xsi:type="varchar" name="segment_ids" nullable="true" length="255" comment="Customer segment ids of a Dynamic Block (D7)"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="reference_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_HOST_BLOCK_SOURCE">
+            <column name="store_id"/>
+            <column name="host_type"/>
+            <column name="host_id"/>
+            <column name="block_kind"/>
+            <column name="block_id"/>
+            <column name="block_identifier"/>
+            <column name="source"/>
+            <column name="source_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_STORE_ID_STORE_STORE_ID"
+                    table="thedevkitchen_cmssearch_block_reference" column="store_id"
+                    referenceTable="store" referenceColumn="store_id" onDelete="CASCADE"/>
+        <index referenceId="THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_BLOCK_KIND_BLOCK_ID" indexType="btree">
+            <column name="block_kind"/>
+            <column name="block_id"/>
+        </index>
+        <index referenceId="THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_BLOCK_KIND_BLOCK_IDENTIFIER" indexType="btree">
+            <column name="block_kind"/>
+            <column name="block_identifier"/>
+        </index>
+        <index referenceId="THEDEVKITCHEN_CMSSEARCH_BLOCK_REFERENCE_SOURCE_SOURCE_ID" indexType="btree">
+            <column name="source"/>
+            <column name="source_id"/>
+        </index>
+    </table>
+    <table name="thedevkitchen_cmssearch_product_block_text" resource="default" engine="innodb"
+           comment="CMS Search: text of the blocks published on a product page (subscribed to the catalogsearch_fulltext mview)">
+        <column xsi:type="int" name="product_id" unsigned="true" nullable="false" comment="catalog_product_entity.entity_id"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" comment="Store view"/>
+        <column xsi:type="mediumtext" name="text" nullable="false" comment="Block text"/>
+        <column xsi:type="varchar" name="text_hash" nullable="false" length="40" comment="sha1 of text (written only when it changes)"/>
+        <column xsi:type="timestamp" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="product_id"/>
+            <column name="store_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="THEDEVKITCHEN_CMSSEARCH_PRODUCT_BLOCK_TEXT_STORE_ID_STORE_STORE_ID"
+                    table="thedevkitchen_cmssearch_product_block_text" column="store_id"
+                    referenceTable="store" referenceColumn="store_id" onDelete="CASCADE"/>
+    </table>
 </schema>
