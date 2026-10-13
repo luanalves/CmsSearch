@@ -386,4 +386,46 @@ class DiPreferencesContractTest extends TestCase
             $this->assertSame(self::LOGGER, ltrim((string) $logger[0], '\\'), $class);
         }
     }
+    /**
+     * Plan 6 Task 10: the category indexing chain gets no <arguments> in di.xml, so every constructor parameter must be
+     * autowirable (an existing class or interface, or optional); the full rebuild (behind the command's proxy) and the
+     * consumer build it at runtime. Guest visibility reads the storefront's own catalog permission index resource
+     * (dimension-aware), never a hand-written table name.
+     */
+    public function testTheCategoryIndexingChainIsAutowirable(): void
+    {
+        $classes = [
+            \Thedevkitchen\CmsSearch\Model\Indexer\CategoryIndexer::class,
+            \Thedevkitchen\CmsSearch\Model\Indexer\CategoryDocumentBuilder::class,
+            \Thedevkitchen\CmsSearch\Model\Indexer\CategoryPermissionReader::class,
+            \Thedevkitchen\CmsSearch\Model\Indexer\CatalogIdSource::class,
+            FullReindexer::class,
+        ];
+        $di = $this->di('etc/di.xml');
+        foreach ($classes as $class) {
+            $this->assertTrue(class_exists($class), "class not found: $class");
+            $configured = array_map(
+                static fn ($node): string => (string) $node,
+                $di->xpath('//type[@name="' . $class . '"]/arguments/argument/@name')
+            );
+            foreach ((new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [] as $param) {
+                $type = $param->getType();
+                $name = $type instanceof \ReflectionNamedType ? $type->getName() : '';
+                $this->assertTrue(
+                    $param->isOptional() || $this->exists($name) || in_array($param->getName(), $configured, true),
+                    "$class: constructor parameter \$" . $param->getName() . " ($name) cannot be injected"
+                );
+            }
+        }
+        $types = array_map(
+            static fn (\ReflectionParameter $p): string => (string) $p->getType(),
+            (new \ReflectionClass(\Thedevkitchen\CmsSearch\Model\Indexer\CategoryPermissionReader::class))->getConstructor()->getParameters()
+        );
+        $this->assertContains(\Magento\CatalogPermissions\Model\ResourceModel\Permission\Index::class, $types);
+        $fullTypes = array_map(
+            static fn (\ReflectionParameter $p): string => (string) $p->getType(),
+            (new \ReflectionClass(FullReindexer::class))->getConstructor()->getParameters()
+        );
+        $this->assertContains(\Thedevkitchen\CmsSearch\Model\Indexer\CategoryIndexer::class, $fullTypes, '--sync must rebuild categories too');
+    }
 }

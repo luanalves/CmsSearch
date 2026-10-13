@@ -66,7 +66,19 @@ class FullReindexerTest extends TestCase
 
     private function reindexer(ResourceConnection $resource): FullReindexer
     {
-        return new FullReindexer($resource, $this->stores, $this->pageIndexer, $this->indexManager, $this->locks, 2);
+        $catalogIds = $this->createMock(\Thedevkitchen\CmsSearch\Model\Indexer\CatalogIdSource::class);
+        $catalogIds->method('nextCategoryIds')->willReturn([]);
+        return new FullReindexer(
+            $resource,
+            $this->stores,
+            $this->pageIndexer,
+            $this->indexManager,
+            $this->locks,
+            $this->createMock(\Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver::class),
+            $this->createMock(\Thedevkitchen\CmsSearch\Model\Indexer\CategoryIndexer::class),
+            $catalogIds,
+            2
+        );
     }
 
     private function fillRecorder(): void
@@ -98,8 +110,8 @@ class FullReindexerTest extends TestCase
         ], $this->calls);
         $this->assertSame([
             'stores' => [
-                ['store_id' => 1, 'index' => 'idx_1_v2', 'documents' => 1, 'removed' => ['idx_1_v1'], 'leftovers' => []],
-                ['store_id' => 2, 'index' => 'idx_2_v2', 'documents' => 1, 'removed' => ['idx_2_v1'], 'leftovers' => []],
+                ['store_id' => 1, 'index' => 'idx_1_v2', 'documents' => 1, 'categories' => 0, 'removed' => ['idx_1_v1'], 'leftovers' => []],
+                ['store_id' => 2, 'index' => 'idx_2_v2', 'documents' => 1, 'categories' => 0, 'removed' => ['idx_2_v1'], 'leftovers' => []],
             ],
             'orphans' => ['idx_9_v1'],
         ], $result);
@@ -135,7 +147,7 @@ class FullReindexerTest extends TestCase
         $this->indexManager->expects($this->never())->method('dropOrphans');
         $result = $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
         $this->assertSame(
-            [['store_id' => 2, 'index' => 'idx_2_v2', 'documents' => 1, 'removed' => ['idx_2_v1'], 'leftovers' => []]],
+            [['store_id' => 2, 'index' => 'idx_2_v2', 'documents' => 1, 'categories' => 0, 'removed' => ['idx_2_v1'], 'leftovers' => []]],
             $result['stores']
         );
         $this->assertSame([], $result['orphans']);

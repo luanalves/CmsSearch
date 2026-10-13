@@ -63,16 +63,22 @@ class AsyncOnlyContractTest extends TestCase
     }
 
     /**
-     * Only the writer classes themselves are skipped (PageIndexer uses IndexManager, FullReindexer both): any other
-     * class, inside Model/Indexer/ too, that starts depending on a writer must be added here on purpose.
+     * Only the writer classes themselves are skipped (PageIndexer and CategoryIndexer use IndexManager, FullReindexer
+     * all of them): any other class, inside Model/Indexer/ too, that starts depending on a writer must be added here on
+     * purpose.
      */
     public function testOnlyTheConsumerAndTheCliUseTheIndexWriters(): void
     {
         $this->assertSame(
             ['Console/Command/ReindexCommand.php', 'Model/Queue/PageReindexProcessor.php'],
             $this->usersOf(
-                ['PageIndexer', 'FullReindexer', 'IndexManager'],
-                ['Model/Indexer/PageIndexer.php', 'Model/Indexer/FullReindexer.php', 'Model/Indexer/IndexManager.php'],
+                ['PageIndexer', 'CategoryIndexer', 'FullReindexer', 'IndexManager'],
+                [
+                    'Model/Indexer/PageIndexer.php',
+                    'Model/Indexer/CategoryIndexer.php',
+                    'Model/Indexer/FullReindexer.php',
+                    'Model/Indexer/IndexManager.php',
+                ],
                 true
             )
         );

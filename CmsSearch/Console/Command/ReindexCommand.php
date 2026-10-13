@@ -26,7 +26,8 @@ use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
  * --sync (operators only, CLI only): rebuilds the index in this process - a new index per store view, filled, refreshed,
  * then an atomic alias switch (zero downtime) - and publishes nothing; without --store it also drops the indices of
  * deleted store views. Stop the consumer first, or publish the pages again afterwards (see FullReindexer).
- * Categories arrive with Plan 6.
+ * --sync rebuilds pages AND category documents (Plan 6) and prints one page line and one category line per store view;
+ * the asynchronous --entity=category is not offered yet.
  */
 class ReindexCommand extends Command
 {
@@ -147,6 +148,14 @@ class ReindexCommand extends Command
                 $store['index'],
                 $store['removed'] === [] ? 'none' : implode(', ', $store['removed'])
             ));
+            if (isset($store['categories'])) {
+                $output->writeln(sprintf(
+                    'Store %d: %d category document(s) indexed into %s.',
+                    $store['store_id'],
+                    $store['categories'],
+                    $store['index']
+                ));
+            }
             if ($store['leftovers'] !== []) {
                 $output->writeln(sprintf(
                     '<comment>Store %d: the old version(s) %s could not be deleted (logged); the next --sync removes them.</comment>',

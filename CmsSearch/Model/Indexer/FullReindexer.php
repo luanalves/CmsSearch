@@ -8,6 +8,8 @@ use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Lock\LockManagerInterface;
 use Thedevkitchen\CmsSearch\Exception\IndexingException;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
+use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
 
 /**
  * Blocking full rebuild for operators (bin/magento thedevkitchen:cmssearch:reindex --sync; never reachable from a web
@@ -15,11 +17,14 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
  * deleting the first one's unfinished version at its swap):
  *   1. a new index version is created with the current strict mapping (IndexManager::createIndex);
  *   2. every page id is streamed in keyset batches through PageIndexer in full mode (visible pages only, written
- *      through the version's build alias, no refresh per request);
+ *      through the version's build alias, no refresh per request), then every category id (level >= 2) through
+ *      CategoryIndexer the same way (Plan 6: category documents share the index, so the alias switch would drop them
+ *      otherwise); the reference graph of every page and category batch is refreshed before it is indexed;
  *   3. the version is refreshed ONCE (REFRESH DECISION), then the alias is moved to it in one atomic _aliases call
  *      (zero downtime: searches read the alias) and the store's other versions are deleted.
- * A failure in 1-3 drops the new version and leaves the alias where it was. switchAlias() throws only when the alias
- * did NOT move, so the drop in the catch can never hit the live index; after a successful switch nothing is dropped
+ * A failure in 1-3 (pages, categories or their graph) drops the new version and leaves the alias where it was.
+ * switchAlias() throws only when the alias did NOT move, so the drop in the catch can never hit the live index; after
+ * a successful switch nothing is dropped
  * (old versions that could not be deleted are returned as "leftovers"; the next rebuild removes them).
  * Without a store id every store view is rebuilt in turn, then the indices of deleted store views are dropped.
  *
@@ -39,6 +44,9 @@ class FullReindexer
         private readonly PageIndexer $pageIndexer,
         private readonly IndexManager $indexManager,
         private readonly LockManagerInterface $lockManager,
+        private readonly BlockReferenceResolver $referenceResolver, // Plan 6
+        private readonly CategoryIndexer $categoryIndexer, // Plan 6
+        private readonly CatalogIdSource $catalogIdSource, // Plan 6
         private readonly int $batchSize = 500
     ) {
     }
@@ -47,7 +55,7 @@ class FullReindexer
      * @param int|null $storeId one store view; null = all of them, and the indices of deleted store views are dropped
      * @param (callable(string): void)|null $progress receives one line per step (verbose CLI output)
      * @return array{
-     *     stores: list<array{store_id: int, index: string, documents: int, removed: list<string>, leftovers: list<string>}>,
+     *     stores: list<array{store_id: int, index: string, documents: int, categories: int, removed: list<string>, leftovers: list<string>}>,
      *     orphans: list<string>
      * }
      * @throws IndexingException
@@ -85,7 +93,7 @@ class FullReindexer
     }
 
     /**
-     * @return array{store_id: int, index: string, documents: int, removed: list<string>, leftovers: list<string>}
+     * @return array{store_id: int, index: string, documents: int, categories: int, removed: list<string>, leftovers: list<string>}
      * @throws IndexingException
      */
     private function rebuildLocked(StoreContext $store, ?callable $progress): array
@@ -105,7 +113,7 @@ class FullReindexer
     }
 
     /**
-     * @return array{store_id: int, index: string, documents: int, removed: list<string>, leftovers: list<string>}
+     * @return array{store_id: int, index: string, documents: int, categories: int, removed: list<string>, leftovers: list<string>}
      * @throws IndexingException
      */
     private function rebuildStore(StoreContext $store, ?callable $progress): array
@@ -128,6 +136,7 @@ class FullReindexer
             do {
                 $pageIds = $this->nextPageIds($lastId);
                 if ($pageIds !== []) {
+                    $this->referenceResolver->refreshForHosts(HostType::PAGE, $pageIds, $storeId);
                     $documents += $this->pageIndexer->reindex($pageIds, [$store], [$storeId => $index])['upserted'];
                     $read += count($pageIds);
                     $lastId = (int) end($pageIds);
@@ -140,6 +149,25 @@ class FullReindexer
                     ));
                 }
             } while (count($pageIds) === $this->batchSize);
+            $categories = 0;
+            $read = 0;
+            $lastId = 0;
+            do {
+                $categoryIds = $this->catalogIdSource->nextCategoryIds($lastId, $this->batchSize);
+                if ($categoryIds !== []) {
+                    $this->referenceResolver->refreshForHosts(HostType::CATEGORY, $categoryIds, $storeId);
+                    $categories += $this->categoryIndexer->reindex($categoryIds, [$store], [$storeId => $index])['upserted'];
+                    $read += count($categoryIds);
+                    $lastId = (int) end($categoryIds);
+                    $this->report($progress, sprintf(
+                        'Store %d: %d categor(ies) read, %d category document(s) written (last category id %d).',
+                        $storeId,
+                        $read,
+                        $categories,
+                        $lastId
+                    ));
+                }
+            } while (count($categoryIds) === $this->batchSize);
             $this->indexManager->refresh($index);
             $this->report($progress, sprintf('Store %d: %s refreshed; switching the alias.', $storeId, $index));
             // throws only when the alias did not move: the catch below can never drop the live index
@@ -160,6 +188,7 @@ class FullReindexer
             'store_id' => $storeId,
             'index' => $index,
             'documents' => $documents,
+            'categories' => $categories,
             'removed' => $switched['deleted'],
             'leftovers' => $switched['leftovers'],
         ];

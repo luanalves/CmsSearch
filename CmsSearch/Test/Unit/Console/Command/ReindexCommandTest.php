@@ -159,6 +159,23 @@ class ReindexCommandTest extends TestCase
         $this->assertSame([], $this->sent);
     }
 
+    public function testSyncNamesTheCategoryDocumentsOfEveryStoreView(): void
+    {
+        $this->fullReindexer->method('rebuild')->willReturn(['stores' => [
+            ['store_id' => 1, 'index' => 'i_1_v2', 'documents' => 3, 'categories' => 2, 'removed' => [], 'leftovers' => []],
+            ['store_id' => 2, 'index' => 'i_2_v2', 'documents' => 0, 'categories' => 0, 'removed' => [], 'leftovers' => []],
+        ], 'orphans' => []]);
+        $tester = $this->tester([]);
+        $this->assertSame(0, $tester->execute(['--sync' => true]));
+        $this->assertSame(
+            "Store 1: 3 page document(s) indexed into i_1_v2 (removed: none).\n"
+            . "Store 1: 2 category document(s) indexed into i_1_v2.\n"
+            . "Store 2: 0 page document(s) indexed into i_2_v2 (removed: none).\n"
+            . "Store 2: 0 category document(s) indexed into i_2_v2.\n",
+            $tester->getDisplay()
+        );
+    }
+
     public function testSyncCanBeLimitedToOneStoreView(): void
     {
         $store = $this->createMock(StoreInterface::class);
