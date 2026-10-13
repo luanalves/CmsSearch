@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!--
+    CMS Search (Plan 5): handle added on CMS tabs. Replaces the product listing, the layered navigation and the GTM
+    product impressions by the CMS cards (+ pagination) and the classification filter (D4: content tabs only).
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <attribute name="class" value="cmssearch-cms-tab"/>
+        <referenceBlock name="thedevkitchen.cmssearch.products.panel" remove="true"/>
+        <referenceBlock name="search.result" remove="true"/>
+        <referenceBlock name="catalogsearch.leftnav" remove="true"/>
+        <referenceBlock name="search_result_impression" remove="true"/>
+        <referenceContainer name="content">
+            <block class="Magento\Framework\View\Element\Template" name="thedevkitchen.cmssearch.cards"
+                   after="thedevkitchen.cmssearch.tabs" template="Thedevkitchen_CmsSearch::result/cards.phtml">
+                <arguments>
+                    <argument name="view_model" xsi:type="object">Thedevkitchen\CmsSearch\ViewModel\ResultCards</argument>
+                </arguments>
+                <block class="Magento\Framework\View\Element\Template" name="thedevkitchen.cmssearch.pagination"
+                       as="pagination" template="Thedevkitchen_CmsSearch::result/pagination.phtml">
+                    <arguments>
+                        <argument name="view_model" xsi:type="object">Thedevkitchen\CmsSearch\ViewModel\ResultCards</argument>
+                    </arguments>
+                </block>
+            </block>
+        </referenceContainer>
+        <referenceContainer name="sidebar.main">
+            <block class="Magento\Framework\View\Element\Template" name="thedevkitchen.cmssearch.filter" before="-"
+                   template="Thedevkitchen_CmsSearch::result/classification-filter.phtml">
+                <arguments>
+                    <argument name="view_model" xsi:type="object">Thedevkitchen\CmsSearch\ViewModel\ClassificationFilter</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

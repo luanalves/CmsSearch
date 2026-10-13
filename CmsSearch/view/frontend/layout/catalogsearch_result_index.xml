@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<!--
+    CMS Search (Plan 5): tab bar above the results, and the native result wrapped in the Products tab panel.
+    Nothing native is removed here; CMS tabs add the handle thedevkitchen_cmssearch_tab (observer AddCmsTabHandle).
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Thedevkitchen\CmsSearch\Block\Result\Tabs" name="thedevkitchen.cmssearch.tabs" before="-"
+                   template="Thedevkitchen_CmsSearch::result/tabs.phtml">
+                <arguments>
+                    <argument name="view_model" xsi:type="object">Thedevkitchen\CmsSearch\ViewModel\SearchTabs</argument>
+                </arguments>
+            </block>
+            <block class="Magento\Framework\View\Element\Template" name="thedevkitchen.cmssearch.products.panel"
+                   after="thedevkitchen.cmssearch.tabs" template="Thedevkitchen_CmsSearch::result/products-panel.phtml">
+                <arguments>
+                    <argument name="view_model" xsi:type="object">Thedevkitchen\CmsSearch\ViewModel\SearchTabs</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+        <move element="search.result" destination="thedevkitchen.cmssearch.products.panel"/>
+    </body>
+</page>

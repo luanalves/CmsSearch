@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- layout_load_before fires on every storefront page: the search state is built only on the search result page. -->
+    <type name="Thedevkitchen\CmsSearch\Observer\AddCmsTabHandle">
+        <arguments>
+            <argument name="state" xsi:type="object">Thedevkitchen\CmsSearch\Model\Search\SearchState\Proxy</argument>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Search\Log\Logger</argument>
+        </arguments>
+    </type>
+</config>

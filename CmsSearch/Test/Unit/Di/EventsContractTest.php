@@ -6,6 +6,7 @@ namespace Thedevkitchen\CmsSearch\Test\Unit\Di;
 
 use Magento\Framework\Event\ObserverInterface;
 use PHPUnit\Framework\TestCase;
+use Thedevkitchen\CmsSearch\Observer\AddCmsTabHandle;
 use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
 use Thedevkitchen\CmsSearch\Observer\SavePageClassification;
 
@@ -32,6 +33,18 @@ class EventsContractTest extends TestCase
                 $this->assertTrue(is_a($class, ObserverInterface::class, true), "$class must implement ObserverInterface");
             }
         }
+    }
+
+    public function testTheStorefrontFileIsCoveredAndOnlyAddsTheSearchHandle(): void
+    {
+        $frontend = dirname(__DIR__, 3) . '/etc/frontend/events.xml';
+        $this->assertContains($frontend, $this->files());
+        $xml = simplexml_load_file($frontend);
+        $this->assertSame(['layout_load_before'], array_map('strval', $xml->xpath('//event/@name')));
+        $this->assertSame(
+            [AddCmsTabHandle::class],
+            array_map(static fn ($node): string => ltrim((string) $node, '\\'), $xml->xpath('//observer/@instance'))
+        );
     }
 
     public function testThePageSaveObserverRunsInsideTheSaveTransaction(): void

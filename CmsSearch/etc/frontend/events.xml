@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <!-- Plan 5: CMS tabs on the search result page (handle thedevkitchen_cmssearch_tab). -->
+    <event name="layout_load_before">
+        <observer name="thedevkitchen_cmssearch_add_cms_tab_handle"
+                  instance="Thedevkitchen\CmsSearch\Observer\AddCmsTabHandle"/>
+    </event>
+</config>

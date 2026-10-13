@@ -29,7 +29,8 @@ use Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
 
 /**
- * Static contract check of etc/di.xml and etc/adminhtml/di.xml, plus the DI side of etc/events.xml (no DB, no ObjectManager).
+ * Static contract check of etc/di.xml, etc/adminhtml/di.xml and etc/frontend/di.xml, plus the DI side of the events.xml
+ * files (no DB, no ObjectManager).
  */
 class DiPreferencesContractTest extends TestCase
 {
@@ -46,7 +47,7 @@ class DiPreferencesContractTest extends TestCase
     /** @return array<string, array{0: string}> */
     public static function files(): array
     {
-        return ['global' => ['etc/di.xml'], 'adminhtml' => ['etc/adminhtml/di.xml']];
+        return ['global' => ['etc/di.xml'], 'adminhtml' => ['etc/adminhtml/di.xml'], 'frontend' => ['etc/frontend/di.xml']];
     }
 
     private function di(string $file): \SimpleXMLElement
@@ -176,9 +177,12 @@ class DiPreferencesContractTest extends TestCase
      */
     public function testEveryEventObserverIsAutowirable(): void
     {
-        $path = dirname(__DIR__, 3) . '/etc/events.xml';
-        $this->assertFileExists($path, 'etc/events.xml must exist');
-        $observers = simplexml_load_file($path)->xpath('//observer/@instance');
+        $observers = [];
+        foreach (['etc/events.xml', 'etc/frontend/events.xml'] as $file) {
+            $path = dirname(__DIR__, 3) . '/' . $file;
+            $this->assertFileExists($path, "$file must exist");
+            $observers = array_merge($observers, simplexml_load_file($path)->xpath('//observer/@instance'));
+        }
         $this->assertNotEmpty($observers);
         foreach ($observers as $instance) {
             $class = ltrim((string) $instance, '\\');
