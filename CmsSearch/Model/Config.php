@@ -32,7 +32,7 @@ class Config
     public const MAX_PAGE_SIZE = 60;
     public const DEFAULT_SUMMARY_LENGTH = 200;
     public const MIN_SUMMARY_LENGTH = 50;
-    public const MAX_SUMMARY_LENGTH = 1000;
+    public const MAX_SUMMARY_LENGTH = 300;
     public const DEFAULT_SEARCH_TIMEOUT_MS = 1500;
     public const MIN_SEARCH_TIMEOUT_MS = 1;
     public const MAX_SEARCH_TIMEOUT_MS = 10000;

@@ -136,7 +136,7 @@ Categories,Categories
 "Empty: the translated name ""Categories"". The tab appears only when category documents are indexed.","Empty: the translated name ""Categories"". The tab appears only when category documents are indexed."
 "CMS Results","CMS Results"
 "Cards per page on the CMS tabs. Whole number from 1 to 60; default 12.","Cards per page on the CMS tabs. Whole number from 1 to 60; default 12."
-"Characters of the card summary, cut at a word boundary. Whole number from 50 to 1000; default 200.","Characters of the card summary, cut at a word boundary. Whole number from 50 to 1000; default 200."
+"Characters of the card summary, cut at a word boundary. Whole number from 50 to 300; default 200.","Characters of the card summary, cut at a word boundary. Whole number from 50 to 1000; default 200."
 "Search results by type","Search results by type"
 "No results in this tab for your search.","No results in this tab for your search."
 "Clear the classification filter","Clear the classification filter"
@@ -144,7 +144,7 @@ Categories,Categories
 "Go to the first page","Go to the first page"
 "%1 result(s)","%1 result(s)"
 "Result pages","Result pages"
-Previous,Previous
-Next,Next
+"Previous page",Previous
+"Next page",Next
 "Page %1","Page %1"
 "Clear filter","Clear filter"

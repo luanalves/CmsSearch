@@ -224,13 +224,13 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 
 ### Settings and module switch
 
-- Stores > Configuration > Thedevkitchen > CMS Search > "Search Result Page" (store view scope): "Show CMS Tabs" (`thedevkitchen_cmssearch/general/enabled`, website/store view, default yes), tab labels for Products/Categories (empty = translated name), results per page (`results/page_size`, 1-60, default 12), summary length (`results/summary_length`, 50-1000, default 200). Out-of-range values are rejected by the backend model.
+- Stores > Configuration > Thedevkitchen > CMS Search > three groups, store view scope: "Search Result Page" (Show CMS Tabs), "Fixed Tabs" (Products/Categories labels) and "CMS Results" (results per page, summary length): "Show CMS Tabs" (`thedevkitchen_cmssearch/general/enabled`, website/store view, default yes), tab labels for Products/Categories (empty = translated name), results per page (`results/page_size`, 1-60, default 12), summary length (`results/summary_length`, 50-300, default 200: the index stores at most 300 characters of summary, so a larger value would have no effect). Out-of-range values are rejected by the backend model; a stored value outside the bounds reads as the default.
 - `thedevkitchen_cmssearch/results/search_timeout_ms` (1-10000, default 1500) has no form field: `bin/magento config:set thedevkitchen_cmssearch/results/search_timeout_ms <ms>`.
 - Switch off for a store view = the native page: no tab bar, no CMS results (listing identical to the native one). Indexing is not affected. The queue group stays global.
 
 ### Fallbacks and logging
 
-- A failing or slow index request (timeout above), an unexpected error or a failing tree reader shows the native Products page without tab bar (a tree failure only hides the filter) and writes ONE warning line per request to `var/log/cmssearch_search.log`: store id and error class, never the searched text, editorial content or exception messages. A store view whose alias does not exist yet shows the native page without logging. A log file that cannot be written never breaks the page.
+- A failing or slow index request (timeout above) shows the native Products page without tab bar and writes ONE WARNING line per request to `var/log/cmssearch_search.log` (store id, alias and engine error class; never the searched text, editorial content or exception messages). Unexpected errors (a failing query/state resolution, the tab-handle observer) are logged at ERROR level, class name only, and also give the native page; a failing tree reader only hides the filter (ERROR); a failing Products count logs a WARNING and the tab renders without counter. A store view whose alias does not exist yet shows the native page without logging. A log file that cannot be written never breaks the page.
 - Recommended: add `cmssearch_search.log` to logrotate next to `cmssearch_reindex.log`.
 
 ### Products count (decision 2)
@@ -247,6 +247,11 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 
 - No block uses `cacheable="false"`. The Products tab link is `?q=` only and stays on the cacheable path, so a cached Products page carries the CMS counters of the moment it was cached; CMS tabs, filters and pages are never cached natively. `full_page` is disabled in this install's env.php, so Varnish behaviour was not observed: Plan 7 validates Varnish/`full_page` and index-aware invalidation.
 
+### Cacheable Products URL and the test fixture
+
+- The Products tab URL (`?q=` only) is the cacheable one: with `full_page` on, a cached Products page keeps the CMS tab counters (and the tab list) of the moment it was cached, until the page is invalidated or expires; CMS tabs, filters and pages (`tab`/`cls`/`p`) are not cached. Plan 7 decides on index-aware invalidation or a short TTL.
+- When Plan 7 enables `full_page`, `integration/support/cmssearch_ui_data.sh` (seed/purge) and the suites must also clean the `full_page` cache (and Varnish) after changing content types, config or documents; today they only clean the `config` cache, which is enough because `full_page` is disabled.
+
 ### Accessibility
 
 - Tabs are links with `role="tab"` inside `role="tablist"`, `aria-selected`, `aria-controls` on the active tab only, and one `role="tabpanel"` labelled by the active tab (the products wrapper or the cards block). Keyboard model (`Thedevkitchen_CmsSearch/js/tabs`): roving `tabindex`, Arrow keys/Home/End move focus only, Space or Enter activates (manual activation; without JS every tab is a normal link). Text colour is fixed (`#333`), brand colour only on the active-tab bar and the current page border; focus ring 2px. Pagination, filter and empty states use translated `aria-label`s (pt_BR included). cypress-axe (WCAG 2 A/AA) passes in all six themes, desktop and 375px. Plain text from the index (title, summary) is escaped on output; card URLs and images are shown only when `https?://`.
@@ -262,9 +267,17 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 2. Store 1 (Luma): the host still holds a stale static build from 2026-06-15, so `styles-m.css` lacks the module rules and store 1 shows the tab bar and cards unstyled. `static.php?resource=frontend/Magento/luma/en_US/css/styles-m.css` has them. Recommended: remove or move aside the host's `pub/static/frontend/Magento/luma/*/css/styles-{m,l}.css` (or the whole stale directory; never `sri-hashes.json`).
 3. macOS resolves `.local` hosts through multicast DNS first (about 5 s per lookup), which makes Cypress time out on the website1 hosts. The specs use the CONNECT-only proxy `e2e/cypress/support/hostmap-proxy.js` (`node e2e/cypress/support/hostmap-proxy.js &`, port 18443) and run with `HTTPS_PROXY=http://127.0.0.1:18443 NO_PROXY=`; without it they skip. Alternative: use `.localhost` names for the Local store views.
 
+### Open decisions (left to the user)
+
+- Zero-count tabs: today every ACTIVE content type gets a tab on every store view (content types are global), even when the store view has no document of that type (count 0 and an empty-state message). Options: keep; hide tabs with count 0 (except the active one); a per-type "visible store views" setting.
+- Recall of the CMS query: terms are combined with the operator AND (every word must match). Queries made of emoji or zero-width/format characters produce tokens that never match and therefore 0 CMS hits. Options: keep AND; `minimum_should_match` (e.g. 75%); strip the characters before the query.
+- Gaming theme surface: the module paints a white surface for the tab bar, results and filter (fixed #333 text) because `Local/gaming` has a dark page background. Options: keep the white card on all themes; give `Local/gaming` its own dark palette for the module (theme-level LESS override).
+- Environment defects (see above): share one `pub/static` between nginx and php-fpm, rebuild or remove the stale June Luma static build on the host, move the Local store views from `.local` to `.localhost` (or add a DNS workaround for mDNS).
+
 ### Plan 6/7 handoff
 
 - Plan 6: index category documents (`entity_type=category`, `_id` `category_<id>`, `title`, `summary`, `url`, `image`, `store_view_id`, `website_id`); the Categories tab and its cards appear automatically (no facet, D4). Respect EE catalog permissions / shared catalogs when indexing categories. Fields filled later (`segment_ids`): the segment filter is `missing OR intersects the customer's segments` at query time (Varnish impact to decide, see Pending items). Keep escaping title/text/summary and the http(s) allow-list for URLs and images. `FullReindexer --sync` must rebuild every entity type or the swap drops them.
+- Follow-ups for Plans 6/7: a single-render guard for the pre-rendered `search.result` (nothing prevents a third-party layout from rendering it twice); `ResetAfterRequestInterface` for `SearchState` and the memoised readers (long-running workers); the module issues one OpenSearch request on every search page view even with zero active content types and zero category documents (skip it when nothing but Products can exist); card images with `http://` URLs are accepted by the allow-list and cause mixed content on https stores (restrict to https or the media base URL); strip Unicode `Cf` (format) characters from `q` before querying.
 - Request-scoped state: `SearchState` is a shared per-request service; if a long-running process ever reuses it (consumers, GraphQL), reset it between requests.
 - Plan 7: Varnish/`full_page` checks of the URLs above, release notes for the environment defects and logrotate for `cmssearch_search.log`.
 

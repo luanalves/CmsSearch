@@ -222,7 +222,7 @@ class SearchStateTest extends TestCase
 
     public function testAnIndexFailureLeavesOnlyTheProductsTabAndIsLogged(): void
     {
-        $this->params = ['tab' => 'news', 'cls' => 'agro'];
+        $this->params = ['tab' => 'news', 'cls' => 'agro', 'p' => '3'];
         $this->terms->method('findByCode')->willReturn(['term_id' => 1, 'code' => 'agro', 'label' => 'Agro']);
         $this->failure = new SearchUnavailableException('CMS search request on magento2_thedevkitchen_cmssearch_2 failed (RuntimeException).');
         $this->logger->expects($this->once())->method('warning')->with($this->callback(
@@ -233,7 +233,8 @@ class SearchStateTest extends TestCase
         $this->assertSame('produtos', $state->getActiveTab()->getCode());
         $this->assertFalse($state->isCmsTabActive());
         $this->assertNull($state->getResult());
-        $this->assertNull($state->getSelectedTerm());
+        $this->assertNull($state->getSelectedTerm(), 'the filter term is dropped after an unavailable search');
+        $this->assertSame(1, $state->getPage(), 'the requested page is dropped after an unavailable search');
     }
 
     public function testAStoreViewWithoutIndexIsNotAnError(): void

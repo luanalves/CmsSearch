@@ -31,7 +31,7 @@ class BoundedIntegerTest extends TestCase
             'page size trimmed' => [PageSize::class, ' 12 ', '12'],
             'page size leading zero' => [PageSize::class, '012', '12'],
             'summary 50' => [SummaryLength::class, '50', '50'],
-            'summary 1000' => [SummaryLength::class, '1000', '1000'],
+            'summary 300' => [SummaryLength::class, '300', '300'],
         ];
     }
 
@@ -53,8 +53,8 @@ class BoundedIntegerTest extends TestCase
             'page size text' => [PageSize::class, 'abc', 'between 1 and 60'],
             'page size empty' => [PageSize::class, '', 'between 1 and 60'],
             'page size decimal' => [PageSize::class, '1.5', 'between 1 and 60'],
-            'summary 49' => [SummaryLength::class, '49', 'between 50 and 1000'],
-            'summary 1001' => [SummaryLength::class, '1001', 'between 50 and 1000'],
+            'summary 49' => [SummaryLength::class, '49', 'between 50 and 300'],
+            'summary 301' => [SummaryLength::class, '301', 'between 50 and 300'],
         ];
     }
 

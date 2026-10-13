@@ -15,7 +15,7 @@ if ($pagination['pages'] === []) {
 <nav class="cmssearch-pagination" aria-label="<?= $escaper->escapeHtmlAttr(__('Result pages')) ?>" data-cmssearch-pagination>
     <ul class="cmssearch-pagination__list">
         <?php if ($pagination['previous'] !== null): ?>
-            <li><a class="cmssearch-pagination__previous" href="<?= $escaper->escapeUrl($pagination['previous']) ?>" rel="prev" data-cmssearch-page="previous"><?= $escaper->escapeHtml(__('Previous')) ?></a></li>
+            <li><a class="cmssearch-pagination__previous" href="<?= $escaper->escapeUrl($pagination['previous']) ?>" rel="prev" data-cmssearch-page="previous"><?= $escaper->escapeHtml(__('Previous page')) ?></a></li>
         <?php endif; ?>
         <?php foreach ($pagination['pages'] as $page): ?>
             <li>
@@ -27,7 +27,7 @@ if ($pagination['pages'] === []) {
             </li>
         <?php endforeach; ?>
         <?php if ($pagination['next'] !== null): ?>
-            <li><a class="cmssearch-pagination__next" href="<?= $escaper->escapeUrl($pagination['next']) ?>" rel="next" data-cmssearch-page="next"><?= $escaper->escapeHtml(__('Next')) ?></a></li>
+            <li><a class="cmssearch-pagination__next" href="<?= $escaper->escapeUrl($pagination['next']) ?>" rel="next" data-cmssearch-page="next"><?= $escaper->escapeHtml(__('Next page')) ?></a></li>
         <?php endif; ?>
     </ul>
 </nav>

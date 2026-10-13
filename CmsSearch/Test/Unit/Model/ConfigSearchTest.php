@@ -66,9 +66,9 @@ class ConfigSearchTest extends TestCase
         return [
             'default' => ['200', 200],
             'lower bound' => ['50', 50],
-            'upper bound' => ['1000', 1000],
+            'upper bound' => ['300', 300],
             'below the bound' => ['49', 200],
-            'above the bound' => ['1001', 200],
+            'above the bound' => ['301', 200],
         ];
     }
 

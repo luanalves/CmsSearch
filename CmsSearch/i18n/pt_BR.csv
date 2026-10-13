@@ -136,7 +136,7 @@ Categories,Categorias
 "Empty: the translated name ""Categories"". The tab appears only when category documents are indexed.","Vazio: o nome traduzido ""Categorias"". A aba só aparece quando há documentos de categoria indexados."
 "CMS Results","Resultados de CMS"
 "Cards per page on the CMS tabs. Whole number from 1 to 60; default 12.","Cards por página nas abas de CMS. Número inteiro de 1 a 60; padrão 12."
-"Characters of the card summary, cut at a word boundary. Whole number from 50 to 1000; default 200.","Caracteres do resumo do card, cortado no fim de uma palavra. Número inteiro de 50 a 1000; padrão 200."
+"Characters of the card summary, cut at a word boundary. Whole number from 50 to 300; default 200.","Caracteres do resumo do card, cortado no fim de uma palavra. Número inteiro de 50 a 300; padrão 200."
 "Search results by type","Resultados da busca por tipo"
 "No results in this tab for your search.","Nenhum resultado nesta aba para a sua busca."
 "Clear the classification filter","Limpar o filtro de classificação"
@@ -144,7 +144,7 @@ Categories,Categorias
 "Go to the first page","Ir para a primeira página"
 "%1 result(s)","%1 resultado(s)"
 "Result pages","Páginas de resultados"
-Previous,Anterior
-Next,Próxima
+"Previous page",Anterior
+"Next page",Próxima
 "Page %1","Página %1"
 "Clear filter","Limpar filtro"

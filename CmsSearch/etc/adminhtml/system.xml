@@ -46,8 +46,8 @@
                 <field id="summary_length" translate="label comment" type="text" sortOrder="20"
                        showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Summary Length</label>
-                    <comment>Characters of the card summary, cut at a word boundary. Whole number from 50 to 1000; default 200.</comment>
-                    <validate>required-entry validate-digits validate-digits-range digits-range-50-1000</validate>
+                    <comment>Characters of the card summary, cut at a word boundary. Whole number from 50 to 300; default 200.</comment>
+                    <validate>required-entry validate-digits validate-digits-range digits-range-50-300</validate>
                     <backend_model>Thedevkitchen\CmsSearch\Model\Config\Backend\SummaryLength</backend_model>
                 </field>
             </group>
