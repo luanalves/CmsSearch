@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Test\Unit\View;
 
 use Magento\Framework\Escaper;
-use Magento\Framework\ZendEscaper;
 use Magento\Framework\Translate\InlineInterface;
 use Magento\Framework\View\Element\Template;
+use Magento\Framework\ZendEscaper;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Block\Result\Tabs;
 use Thedevkitchen\CmsSearch\ViewModel\SearchTabs;
