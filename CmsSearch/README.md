@@ -8,9 +8,10 @@ Indexes CMS content in OpenSearch and shows it in tabs on the search result page
 - Plan 2 delivered: classification tree per website (admin tree, term form, move, delete rules, ACL), and the "Search" fieldset of the CMS Page form (content type + classification term), validated and persisted server-side by an observer inside the page-save transaction.
 - Plan 3 delivered: asynchronous reindex queue (exclusive topic/queue/consumer `thedevkitchen.cmssearch.reindex` with a dead-letter queue), after-commit publishing from every write path, consumer handler with an attempt counter (cap 3), reindex command, configuration section.
 - Plan 4 delivered: CMS page indexer - one OpenSearch index per store view behind a stable alias, documents built from the Staging-active page version (Page Builder content reduced to text), visibility rules, idempotent upserts/deletes from the reindex consumer, and `--sync` full rebuild with an atomic alias switch.
-- i18n: `en_US.csv` and `pt_BR.csv` cover Plans 1-4 (Plan 4 adds no translatable storefront/admin phrase; console descriptions are not translated).
+- Plan 5 delivered: search UI - tab bar with counters on `/catalogsearch/result/` (Products, Categories when category documents exist, one tab per active content type), cards with pagination and a hierarchical classification filter on CMS tabs, graceful fallbacks, six themes.
+- i18n: `en_US.csv` and `pt_BR.csv` cover Plans 1-5 (Plan 4 adds no translatable phrase; console descriptions and log lines are not translated). Test-only phrases are not in the CSVs.
 
-Not delivered yet: search UI (Plan 5), block references and enrichment (Plan 6), hardening/release (Plan 7).
+Not delivered yet: block references and enrichment (Plan 6), hardening/release (Plan 7).
 
 ## Content types
 
@@ -200,10 +201,72 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 - The first search on an idle index triggers a refresh (see Refresh semantics).
 - No catch-up after the `--sync` swap (see Reindex command).
 
-### Plan 5/6 handoff
+### Plan 6 handoff
 
-- Plan 5 reads the alias `{prefix}_thedevkitchen_cmssearch_{store_id}` (`Model\Indexer\IndexNameResolver::getAlias()`), filters on `store_view_id`/`website_id`, aggregates `content_type_code` and `classification_ancestor_ids`, and shortens `summary` to `thedevkitchen_cmssearch/results/summary_length` for display. `title`, `text` and `summary` are PLAIN TEXT after entity decoding and may legitimately contain `<`: Plan 5 must escape them on output. Allow-list new readers in `Test/Unit/Queue/AsyncOnlyContractTest` only if they write.
 - Plan 6 adds block text to `text` from `ExtractedContent::getDirectives()` (widget instances of page group `all_pages` are NOT indexed on any host: user decision), fills `segment_ids`, and adds category documents (`entity_type=category`, `_id` `category_<id>`) and new entity types to `AffectedPages`. Any new field needs `IndexDefinition` + `MAPPING_VERSION` + the upgrade path above. Documents already carry `entity_type` (`page`), `content_type_code` and the classification fields for aggregations.
+
+## Search result page (Plan 5)
+
+### Mechanism (no controller plugin)
+
+- The module's `catalogsearch_result_index.xml` adds the tab bar (`Block\Result\Tabs` + `ViewModel\SearchTabs`) and moves the native `search.result` into a `role="tabpanel"` wrapper. The observer `AddCmsTabHandle` (`layout_load_before`, storefront only, lazy `SearchState\Proxy`) adds the handle `thedevkitchen_cmssearch_tab` on CMS tabs. That layout removes `search.result`, the layered navigation (`catalogsearch.leftnav`) and the GTM impressions, and adds the cards (`ViewModel\ResultCards`, pagination) and the classification filter (`ViewModel\ClassificationFilter`, sidebar).
+- `Model\Search\SearchState` (shared, per request) decides everything: it reads `q` from Magento's `QueryFactory`, sanitizes `tab`/`cls`/`p` (`TabResolver`), loads the active content types and the effective-active classification tree and makes ONE read-only OpenSearch request (`Api\CmsSearchQueryInterface` -> `Model\Search\CmsSearchQuery`, alias of the current store view only, `multi_match`, never raw input). Search classes never write to the index (`Test/Unit/Search/SearchReadOnlyContractTest`).
+
+### URL parameters
+
+- `/catalogsearch/result/?q=<text>&tab=<code>&cls=<term code>&p=<page>`. The URLs the module builds list the parameters in alphabetical order (`cls`, `p`, `q`, `tab`); the order is not significant for reading.
+- `tab`: `produtos` (default, Products), `categorias`, or the code of an active content type (the codes `produtos`/`categorias` are reserved for the fixed tabs). `cls`: a term code of the store view's website, effectively active (an inactive ancestor hides its branch), only on content tabs. `p`: 1-9999, clamped to 10000 / page size. `q` is capped at 256 characters on top of Magento's `catalog/search/max_query_length`. Anything invalid falls back silently (Products tab, no filter, page 1); never a 500.
+
+### Tabs and counters
+
+- Products always (native layout and count); Categories only when the store view's index holds `entity_type=category` documents (feature detection by a `global` aggregation; Plan 6 adds those documents); one tab per ACTIVE content type (sort order, then id; store view label, then default label, then code). The bar is rendered only when at least two tabs exist.
+- Counters come from the single aggregation request and ignore `cls` and `p`. Facet counts are per tab, include descendants and are not scoped to `cls`.
+
+### Settings and module switch
+
+- Stores > Configuration > Thedevkitchen > CMS Search > "Search Result Page" (store view scope): "Show CMS Tabs" (`thedevkitchen_cmssearch/general/enabled`, website/store view, default yes), tab labels for Products/Categories (empty = translated name), results per page (`results/page_size`, 1-60, default 12), summary length (`results/summary_length`, 50-1000, default 200). Out-of-range values are rejected by the backend model.
+- `thedevkitchen_cmssearch/results/search_timeout_ms` (1-10000, default 1500) has no form field: `bin/magento config:set thedevkitchen_cmssearch/results/search_timeout_ms <ms>`.
+- Switch off for a store view = the native page: no tab bar, no CMS results (listing identical to the native one). Indexing is not affected. The queue group stays global.
+
+### Fallbacks and logging
+
+- A failing or slow index request (timeout above), an unexpected error or a failing tree reader shows the native Products page without tab bar (a tree failure only hides the filter) and writes ONE warning line per request to `var/log/cmssearch_search.log`: store id and error class, never the searched text, editorial content or exception messages. A store view whose alias does not exist yet shows the native page without logging. A log file that cannot be written never breaks the page.
+- Recommended: add `cmssearch_search.log` to logrotate next to `cmssearch_reindex.log`.
+
+### Products count (decision 2)
+
+- Calling `getSize()` on the layer collection before the listing renders would run the product search before the toolbar sets order and page size, and a second search collection mixes pending filters through the shared `SearchCriteriaBuilder`. Therefore, on the Products tab the tab bar first renders `search.result` through `LayoutInterface::renderElement()` (cached by the layout, rendered once) and then reads the block's `result_count`; on a CMS tab the layer collection's `getSize()` is the count (one product search; layered filters are ignored there, switching tabs drops them anyway). Verified on the real pages: the counter equals the native toolbar total (also with sort, limit, page 2 and layered filter).
+- Seam: `Model\Search\ProductCount` is a non-final class with a non-final `count()`. If the pre-render ever misbehaves, replace it with a `<preference for="Thedevkitchen\CmsSearch\Model\Search\ProductCount" type="...">` in a di.xml that reads `search_query.num_results` instead (a test pins the non-finality).
+- Failure modes: a failing render is logged by class only and the count is null (the Products tab renders without a counter); the count never throws. Side effect of the layout order: the hidden `form_key` input and `#authenticationPopup` come after the listing inside `content` (the listing markup itself is identical; the page is not byte-identical).
+
+### search_query side effects (native)
+
+- `tab`/`cls`/`p` take Magento's non-cacheable path (`setNoCacheHeaders()`): every CMS tab view runs `saveIncrementalPopularity()` (popularity +1) and term redirects still apply. `num_results` is written only by the Products tab (the native result block); a CMS tab never changes it. A `?q=`-only request increments popularity only when the term is not a "top search term". Synonyms apply to products only.
+
+### Caching notes
+
+- No block uses `cacheable="false"`. The Products tab link is `?q=` only and stays on the cacheable path, so a cached Products page carries the CMS counters of the moment it was cached; CMS tabs, filters and pages are never cached natively. `full_page` is disabled in this install's env.php, so Varnish behaviour was not observed: Plan 7 validates Varnish/`full_page` and index-aware invalidation.
+
+### Accessibility
+
+- Tabs are links with `role="tab"` inside `role="tablist"`, `aria-selected`, `aria-controls` on the active tab only, and one `role="tabpanel"` labelled by the active tab (the products wrapper or the cards block). Keyboard model (`Thedevkitchen_CmsSearch/js/tabs`): roving `tabindex`, Arrow keys/Home/End move focus only, Space or Enter activates (manual activation; without JS every tab is a normal link). Text colour is fixed (`#333`), brand colour only on the active-tab bar and the current page border; focus ring 2px. Pagination, filter and empty states use translated `aria-label`s (pt_BR included). cypress-axe (WCAG 2 A/AA) passes in all six themes, desktop and 375px. Plain text from the index (title, summary) is escaped on output; card URLs and images are shown only when `https?://`.
+
+### Themes
+
+- Templates and `view/frontend/web/css/source/_module.less` live in the module (base frontend area, picked up by Luma's `_module.less` import); no theme overrides them. The six `Local/*` themes inherit from `Magento/luma`. The module paints its own white surface for the tab bar, results and filter (Local/gaming has a dark page background; fixed #333 text on it failed contrast) and removes the 60px top gap of `.columns` on CMS tabs at mobile widths. Per-theme checks: `cms-search-themes.cy.js` (7 tests, TS-42).
+- After changing LESS remove the materialised CSS inside the container (`rm -rf pub/static/frontend/Local pub/static/frontend/Magento/luma var/view_preprocessed/pub/static/frontend`; never `sri-hashes.json`, never `setup:static-content:deploy`/`setup:di:compile` in developer mode).
+
+### Known environment defects (found while testing; fix left to the team)
+
+1. nginx bind-mounts the HOST `pub/static` while php-fpm writes generated files (including `requirejs-config.js`) into the container volume (mutagen ignores `/pub/static/**`). The `Local/*` theme hosts therefore answer 404 for `requirejs-config.js` and no RequireJS JavaScript runs in a browser there (the Cypress specs work around it with `cy.intercept`). Recommended: make nginx and php-fpm share one `pub/static` (mount the same volume in nginx or generate on the host) and then drop the intercepts.
+2. Store 1 (Luma): the host still holds a stale static build from 2026-06-15, so `styles-m.css` lacks the module rules and store 1 shows the tab bar and cards unstyled. `static.php?resource=frontend/Magento/luma/en_US/css/styles-m.css` has them. Recommended: remove or move aside the host's `pub/static/frontend/Magento/luma/*/css/styles-{m,l}.css` (or the whole stale directory; never `sri-hashes.json`).
+3. macOS resolves `.local` hosts through multicast DNS first (about 5 s per lookup), which makes Cypress time out on the website1 hosts. The specs use the CONNECT-only proxy `e2e/cypress/support/hostmap-proxy.js` (`node e2e/cypress/support/hostmap-proxy.js &`, port 18443) and run with `HTTPS_PROXY=http://127.0.0.1:18443 NO_PROXY=`; without it they skip. Alternative: use `.localhost` names for the Local store views.
+
+### Plan 6/7 handoff
+
+- Plan 6: index category documents (`entity_type=category`, `_id` `category_<id>`, `title`, `summary`, `url`, `image`, `store_view_id`, `website_id`); the Categories tab and its cards appear automatically (no facet, D4). Respect EE catalog permissions / shared catalogs when indexing categories. Fields filled later (`segment_ids`): the segment filter is `missing OR intersects the customer's segments` at query time (Varnish impact to decide, see Pending items). Keep escaping title/text/summary and the http(s) allow-list for URLs and images. `FullReindexer --sync` must rebuild every entity type or the swap drops them.
+- Request-scoped state: `SearchState` is a shared per-request service; if a long-running process ever reuses it (consumers, GraphQL), reset it between requests.
+- Plan 7: Varnish/`full_page` checks of the URLs above, release notes for the environment defects and logrotate for `cmssearch_search.log`.
 
 ## Pending items (backlog)
 
@@ -217,7 +280,9 @@ Run sequentially, never concurrently (shared admin/DB/broker state).
 - ACL / data rules: `bash integration/test_content_type_acl.sh`, `bash integration/test_classification.sh`.
 - Reindex queue against the real RabbitMQ: `bash integration/test_cms_search_queue.sh` (144 checks, about 4.5 minutes against the real processor). OPT-IN: without `CMSSEARCH_QUEUE_SUITE=1` it prints SKIP and exits 0, so `./integration/run.sh` and the Stop hook do not run it. `CMSSEARCH_QUEUE_BACKLOG=200` shortens the backlog case. It purges both module queues at start and end, refuses to start when the main queue already holds messages unless `CMSSEARCH_QUEUE_PURGE_OK=1` (then run `bin/magento thedevkitchen:cmssearch:reindex` afterwards), and skips when a consumer of the queue is running.
 - CMS page index against the real OpenSearch and the real consumer: `CMSSEARCH_INDEX_SUITE=1 bash integration/test_cms_search_index.sh` (130 checks, about 3.5 minutes). OPT-IN: without the variable it prints SKIP and exits 0 (so `./integration/run.sh` and the Stop hook skip it). It refuses to start when the main queue holds messages unless `CMSSEARCH_QUEUE_PURGE_OK=1`, purges the module's two queues, skips when a consumer runs, writes only `cmssearch-` pages/`cmssearch_` codes and removes their documents; it rebuilds the index of store view 2 with `--sync` (zero failed searches during the alias switch).
-- Opt-in switches: `CMSSEARCH_QUEUE_SUITE=1` (queue suite), `CMSSEARCH_INDEX_SUITE=1` (index suite), `CMSSEARCH_QUEUE_PURGE_OK=1` (allow purging a non-empty main queue; then run `bin/magento thedevkitchen:cmssearch:reindex --entity=page` afterwards).
+- Opt-in switches: `CMSSEARCH_QUEUE_SUITE=1` (queue suite), `CMSSEARCH_INDEX_SUITE=1` (index suite), `CMSSEARCH_UI_SUITE=1` (search UI suite), `CMSSEARCH_QUEUE_PURGE_OK=1` (allow purging a non-empty main queue; then run `bin/magento thedevkitchen:cmssearch:reindex --entity=page` afterwards).
 - The two data-rule suites run from `./integration/run.sh` (the queue suite skips there); they need the Warden php-fpm (and rabbitmq) containers and clean up after themselves.
 - Admin flows (Cypress), one spec at a time: `cd e2e && env -u ELECTRON_RUN_AS_NODE npx cypress run --spec cypress/e2e/<spec>` with `content-type-admin.cy.js`, `classification-admin.cy.js`, `cms-page-search-fieldset.cy.js`, `cms-page-search-fieldset-existing.cy.js`. They share `e2e/cypress/support/cmssearch.js` (login, helpers and the single `use_form_key` baseline file, so the config flag is restored once).
+- Search result page against the real storefront, index and consumer: `CMSSEARCH_UI_SUITE=1 CMSSEARCH_QUEUE_PURGE_OK=1 bash integration/test_cms_search_ui.sh` (97 checks, a few minutes). OPT-IN: without `CMSSEARCH_UI_SUITE=1` it prints SKIP and exits 0. It seeds and purges its own data with `integration/support/cmssearch_ui_data.sh` (refuses a non-empty main queue unless `CMSSEARCH_QUEUE_PURGE_OK=1`) and needs the six store view hosts in `/etc/hosts`.
+- Storefront Cypress specs, one at a time and with the proxy (see "Known environment defects"): `cd e2e && HTTPS_PROXY=http://127.0.0.1:18443 NO_PROXY= env -u ELECTRON_RUN_AS_NODE npx cypress run --spec cypress/e2e/cms-search-storefront.cy.js` (19 tests, about 5 min) and `cms-search-themes.cy.js` (7 tests, TS-42, six themes plus Luma, about 4 min). Export `CMSSEARCH_QUEUE_PURGE_OK=1` if the main queue holds messages.
 - Test-only helper: `integration/support/cmssearch_fixture.php` (CLI only; writes only `cmssearch_` codes/users and `cmssearch-` pages/Staging updates; `link-page`/`unlink-page` save and restore the link a page had before; backups live in `var/cmssearch-fixture`; queue commands run the real consumer in-process with a probe processor and can make the broker unreachable for their own process only).
