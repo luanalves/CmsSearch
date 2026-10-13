@@ -188,6 +188,18 @@ class HostReindexProcessorTest extends TestCase
         $this->processor()->process(new ReindexMessage('block', 12, 'save', 1));
     }
 
+    public function testAChangedStoreListIsLoggedAsOneInfoLineAndAnUnchangedOneIsNot(): void
+    {
+        $this->affected->method('resolve')->willReturn([]);
+        $this->stores->method('all')->willReturn([self::store(1)]);
+        $this->refresher->method('refreshIfChanged')->willReturnOnConsecutiveCalls(true, false);
+        $this->logger->expects($this->once())->method('info')
+            ->with('store list changed since the consumer started: reinitialised');
+        $processor = $this->processor();
+        $processor->process(new ReindexMessage('widget_instance', 18, 'delete', 1));
+        $processor->process(new ReindexMessage('widget_instance', 19, 'delete', 1));
+    }
+
     public function testANoOpMessageAlsoLogsItsSingleDebugLine(): void
     {
         $this->affected->method('resolve')->willReturn([]);

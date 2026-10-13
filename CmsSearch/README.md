@@ -107,7 +107,7 @@ Entity types and actions: `page` save|delete|staging; `content_type` save|delete
 - Magento's view: `bin/magento queue:consumers:list | grep thedevkitchen`
 - Errors and retries: `var/log/cmssearch_reindex.log`
 - Log rotation: Magento does not rotate `var/log/*.log` and this file gets two DEBUG lines per message. Rotate it with the host's logrotate, e.g. `/var/www/html/var/log/cmssearch_reindex.log { daily rotate 14 compress missingok notifempty copytruncate }` (`copytruncate`: the consumer keeps the file open), or raise the level of the `Thedevkitchen\CmsSearch\Model\Queue\Log\Handler` virtual type to drop the DEBUG lines.
-- Runbook after deleting a store view or a website (nothing is published for them): run `bin/magento thedevkitchen:cmssearch:reindex --sync` WITHOUT `--store`; it drops the indices of store views that no longer exist (`IndexManager::dropOrphans`). A new store view gets its index at its first message; fill it with `bin/magento thedevkitchen:cmssearch:reindex --store=<id>`. The consumer reads the store list once per process (restart it, or wait for the cron restart, after adding or deleting a store view).
+- Runbook after deleting a store view or a website (nothing is published for them): run `bin/magento thedevkitchen:cmssearch:reindex --sync` WITHOUT `--store`; it drops the indices of store views that no longer exist (`IndexManager::dropOrphans`). A new store view gets its index at its first message; fill it with `bin/magento thedevkitchen:cmssearch:reindex --store=<id>`. Before every message the consumer compares the store list (store views and the root category of their group) with the database and reinitialises the StoreManager when it changed, so no restart is needed after adding or deleting a store view. If the store scopes are dumped to `app/etc/config.php` (`app:config:dump scopes`) the file wins over the database: the consumer then reinitialises once per database change and logs a warning in `cmssearch_reindex.log`; update the file or restart the consumer.
 
 ### Reindex command
 
@@ -193,7 +193,7 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 
 ### Runbooks
 
-- After deleting a store view or a website: `bin/magento thedevkitchen:cmssearch:reindex --sync` WITHOUT `--store` (drops the orphan indices). A new store view: `--store=<id>`; restart the consumer, which caches the store list.
+- After deleting a store view or a website: `bin/magento thedevkitchen:cmssearch:reindex --sync` WITHOUT `--store` (drops the orphan indices). A new store view: `--store=<id>` (the consumer picks the new store view up from the database on its next message; with dumped scopes see Known limits).
 - Outage (OpenSearch or broker down, messages in the DLQ): fix the cause, then DLQ -> `bin/magento thedevkitchen:cmssearch:reindex --entity=page` -> purge the DLQ (`rabbitmqadmin purge queue name=thedevkitchen.cmssearch.reindex.dlq`).
 - Hard-killed consumer (the in-flight message is lost): `bin/magento thedevkitchen:cmssearch:reindex --entity=page`.
 - Values baked into documents at index time (`web/*/base_url`, `web/default/cms_home_page`, store code / `web/url/use_store`, locale) publish nothing when they change: run `bin/magento thedevkitchen:cmssearch:reindex --sync` afterwards.
@@ -201,7 +201,8 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 
 ### Known limits
 
-- The consumer reads the store list once per process (restart it after adding or deleting a store view).
+- The consumer re-reads the store list per message when the database differs. With `app:config:dump scopes` the config file overrides the database, the in-memory list can stay different, and a warning is logged once per database change; restart the consumer after updating the dumped scopes.
+- Block, widget and banner changes scan the reference graph by keyset; rows re-inserted by `replace()` in the same message are met again by the scan (de-duplicated, so correct), which costs about 2x graph reads for a block used by very many hosts.
 - Two DEBUG log lines per message.
 - The first search on an idle index triggers a refresh (see Refresh semantics).
 - No catch-up after the `--sync` swap (see Reindex command).

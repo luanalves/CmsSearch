@@ -25,6 +25,10 @@ trait DbStubTrait
     private array $orders = [];
     /** @var list<string> */
     private array $tables = [];
+    /** @var list<int|null> limit() arguments, in call order */
+    private array $limits = [];
+    /** number of distinct() calls */
+    private int $distinctCalls = 0;
     private AdapterInterface&MockObject $connection;
 
     /**
@@ -35,9 +39,17 @@ trait DbStubTrait
     private function db(array $fetchAll = [], array $fetchCol = [], array $fetchPairs = []): ResourceConnection
     {
         $select = $this->createMock(Select::class);
-        foreach (['columns', 'distinct', 'limit', 'group', 'union'] as $method) {
+        foreach (['columns', 'group', 'union'] as $method) {
             $select->method($method)->willReturnSelf();
         }
+        $select->method('distinct')->willReturnCallback(function () use ($select) {
+            $this->distinctCalls++;
+            return $select;
+        });
+        $select->method('limit')->willReturnCallback(function ($count = null) use ($select) {
+            $this->limits[] = $count === null ? null : (int) $count;
+            return $select;
+        });
         $select->method('order')->willReturnCallback(function ($spec) use ($select) {
             $this->orders[] = is_array($spec) ? implode(',', $spec) : (string) $spec;
             return $select;

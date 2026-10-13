@@ -140,6 +140,11 @@ class ReferenceStore
     }
 
     /**
+     * Keyset scan on reference_id. Known cost, not a bug: while the caller consumes the pages it calls replace() for the
+     * hosts of earlier pages, which deletes and re-inserts their rows with NEW (higher) reference_ids, so the scan meets
+     * those rows again in a later page. The hosts are de-duplicated by the consumer of this generator, so the result is
+     * correct; for a block with very many hosts the graph is read about twice.
+     *
      * @param array<string, int|string> $conditions
      * @return \Generator<int, list<array{store_id: int, host_type: string, host_id: int}>>
      */

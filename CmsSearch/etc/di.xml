@@ -84,6 +84,11 @@
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
+    <type name="Thedevkitchen\CmsSearch\Model\Indexer\StoreListRefresher">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
     <type name="Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder">
         <arguments>
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>

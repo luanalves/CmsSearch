@@ -67,6 +67,17 @@ class CatalogIdSourceTest extends TestCase
         $this->assertSame(['cms_page', 'cms_page_store'], $this->tables);
         $this->assertSame(['s.row_id = p.row_id'], $this->joins);
         $this->assertSame(['p.page_id ASC'], $this->orders);
+        $this->assertSame(1, $this->distinctCalls, 'a page assigned to several store views must be listed once');
+        $this->assertSame([500], $this->limits);
+    }
+
+    public function testThePageBatchSizeIsTheLimitAndNeverBelowOne(): void
+    {
+        $this->source($this->db([], [[]]))->nextPageIds(0, 25, 1);
+        $this->assertSame([25], $this->limits);
+        $this->limits = [];
+        $this->source($this->db([], [[]]))->nextPageIds(0, 0, 1);
+        $this->assertSame([1], $this->limits);
     }
 
     public function testThePageLinkFieldComesFromTheEntityMetadata(): void

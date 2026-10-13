@@ -7,6 +7,7 @@ namespace Thedevkitchen\CmsSearch\Model\Indexer;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * The reindex consumer is a long-lived process and Magento's StoreManager keeps the store list it loaded when the
@@ -16,25 +17,45 @@ use Magento\Store\Model\StoreManagerInterface;
  * another root category since the process started). reinitStores() also cleans the store/website/group cache tags and
  * reloads the configuration, so it must never run per message. Values that are not part of this list (base URLs, home
  * page, locale) are baked into documents at index time and still need `--sync` (README runbook).
- * Read-only on the database; holds no state of its own.
+ * Convergence: with `app:config:dump scopes` the file source overrides the database, so the in-memory list can stay
+ * different from the database after reinitStores(). The refresher therefore remembers the fingerprint (hash of the
+ * database lines) it last saw and reinitialises only when the database fingerprint changes; the first message of a
+ * process compares against memory. When memory still differs after a reinit a warning is logged (once per database
+ * state, because the reinit itself happens once per database state).
+ * Read-only on the database; its only state is that fingerprint.
  */
 class StoreListRefresher
 {
     public function __construct(
         private readonly ResourceConnection $resource,
-        private readonly StoreManagerInterface $storeManager
+        private readonly StoreManagerInterface $storeManager,
+        private readonly LoggerInterface $logger
     ) {
     }
+
+    private ?string $lastDatabaseFingerprint = null;
 
     /**
      * @return bool true when the store list differed and the StoreManager was reinitialised
      */
     public function refreshIfChanged(): bool
     {
-        if ($this->fromDatabase() === $this->fromMemory()) {
+        $database = $this->fromDatabase();
+        $fingerprint = hash('sha256', implode("\n", $database));
+        $unchanged = $this->lastDatabaseFingerprint === null
+            ? $database === $this->fromMemory()
+            : $fingerprint === $this->lastDatabaseFingerprint;
+        $this->lastDatabaseFingerprint = $fingerprint;
+        if ($unchanged) {
             return false;
         }
         $this->storeManager->reinitStores();
+        if ($database !== $this->fromMemory()) {
+            $this->logger->warning(
+                'the store list in memory still differs from the database after reinitialising the StoreManager '
+                . '(scopes dumped to app/etc/config.php?); the file source wins, the consumer will not retry until the database changes'
+            );
+        }
         return true;
     }
 

@@ -182,6 +182,7 @@ class ReferenceStoreTest extends TestCase
         $this->assertSame(['footer'], $this->whereValues('block_identifier = ?'));
         $this->assertSame(['reference_id ASC', 'reference_id ASC', 'reference_id ASC'], $this->orders);
         $this->assertSame([self::TABLE, self::TABLE, self::TABLE], $this->tables);
+        $this->assertSame([2, 2, 2], $this->limits, 'every keyset page is bounded by the page size');
     }
 
     public function testADynamicBlockIsLookedUpByIdOnlyAndInvalidInputRunsNoQuery(): void
@@ -203,6 +204,7 @@ class ReferenceStoreTest extends TestCase
         );
         $this->assertSame(['widget'], $this->whereValues('source = ?'));
         $this->assertSame([18], $this->whereValues('source_id = ?'));
+        $this->assertSame([ReferenceStore::HOST_PAGE_SIZE], $this->limits, 'the default page size bounds the query');
         // source id 0 (every content row) or an unknown source would match unrelated hosts: no query.
         $this->assertSame([], iterator_to_array($store->hostsForSource('content', 0), false));
         $this->assertSame([], iterator_to_array($store->hostsForSource('widget', 0), false));

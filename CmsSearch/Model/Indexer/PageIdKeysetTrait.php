@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Model\Indexer;
 
 /**
- * Keyset pagination over cms_page.page_id shared by the full rebuild and the reindex command.
+ * Keyset pagination over cms_page.page_id for the reindex command (the only user; the full rebuild uses
+ * CatalogIdSource::nextPageIds, which also filters by store view).
  * The using class provides `$this->resource` (ResourceConnection) and `$this->batchSize` (int).
  */
 trait PageIdKeysetTrait
