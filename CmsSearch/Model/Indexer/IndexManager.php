@@ -30,6 +30,9 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Engine\ClientProvider;
  * `PUT {alias}/_mapping` for an additive property must also send the complete `_meta`: module, mapping_version,
  * store_id, locale); start the consumers; publish the page reindex
  * (`thedevkitchen:cmssearch:reindex --entity=page`).
+ *
+ * ensureAlias() asks the cluster once per alias and process (aliases are created once and never deleted while their
+ * store view exists); a failed incremental write and dropOrphans() forget them.
  */
 class IndexManager
 {
@@ -66,6 +69,9 @@ class IndexManager
     /** @var array<string, true> aliases whose mapping was checked by this process */
     private array $checkedAliases = [];
 
+    /** @var array<string, true> aliases this process found or created; a failed incremental write forgets its alias */
+    private array $knownAliases = [];
+
     public function __construct(
         private readonly ClientProvider $clientProvider,
         private readonly IndexNameResolver $names,
@@ -82,9 +88,12 @@ class IndexManager
     public function ensureAlias(StoreContext $store): string
     {
         $alias = $this->names->getAlias($store->getStoreId());
+        if (isset($this->knownAliases[$alias])) {
+            return $alias; // one existence check per alias and process (a failed write through it resets this)
+        }
         if ($this->aliasExists($alias)) {
             $this->warnAboutOutdatedMapping($store, $alias);
-            return $alias;
+            return $this->remember($alias);
         }
         $index = $this->names->getVersionName($store->getStoreId(), $this->nextVersion($store->getStoreId()));
         $body = $this->definition->build($store);
@@ -100,7 +109,7 @@ class IndexManager
                 );
             }
         }
-        return $alias;
+        return $this->remember($alias);
     }
 
     /**
@@ -126,9 +135,35 @@ class IndexManager
      *                          incremental change becomes searchable at the next periodic refresh (refresh_interval
      *                          1s, or the first search of a search-idle index); FullReindexer refreshes once before
      *                          the alias switch; tests call refresh() explicitly
+     *
+     * A failed incremental write forgets the alias, so the retry of the message asks the cluster again in
+     * ensureAlias() (the index may have been deleted meanwhile).
+     *
      * @throws IndexingException|\InvalidArgumentException
      */
     public function bulk(string $target, array $operations, bool $incremental): void
+    {
+        try {
+            $this->write($target, $operations, $incremental);
+        } catch (IndexingException $exception) {
+            if ($incremental) {
+                unset($this->knownAliases[$target]);
+            }
+            throw $exception;
+        }
+    }
+
+    /**
+     * @param string $target incremental: the alias of a store view; full rebuild: a version from createIndex()
+     * @param list<array{action: string, id: string, document?: array<string, mixed>}> $operations
+     * @param bool $incremental true: the write must hit the existing alias; false: the version is filled through its
+     *                          build alias. Neither waits for a refresh (REFRESH DECISION, no freshness SLA): an
+     *                          incremental change becomes searchable at the next periodic refresh (refresh_interval
+     *                          1s, or the first search of a search-idle index); FullReindexer refreshes once before
+     *                          the alias switch; tests call refresh() explicitly
+     * @throws IndexingException|\InvalidArgumentException
+     */
+    private function write(string $target, array $operations, bool $incremental): void
     {
         if ($incremental ? $this->names->parseAlias($target) === null : $this->names->parse($target) === null) {
             throw new \InvalidArgumentException(sprintf(
@@ -338,6 +373,7 @@ class IndexManager
      */
     public function dropOrphans(): array
     {
+        $this->knownAliases = []; // orphan indices (and their aliases) are about to disappear
         $existing = [];
         foreach ($this->storeManager->getStores(false) as $store) {
             $id = (int) $store->getId();
@@ -361,6 +397,12 @@ class IndexManager
     private function buildAlias(string $index): string
     {
         return $index . self::BUILD_ALIAS_SUFFIX;
+    }
+
+    private function remember(string $alias): string
+    {
+        $this->knownAliases[$alias] = true;
+        return $alias;
     }
 
     private function aliasExists(string $alias): bool

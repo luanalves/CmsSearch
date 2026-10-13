@@ -12,6 +12,7 @@ use Thedevkitchen\CmsSearch\Exception\InvalidReindexMessageException;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
 use Thedevkitchen\CmsSearch\Model\Indexer\HostReindexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreContextProvider;
+use Thedevkitchen\CmsSearch\Model\Indexer\StoreListRefresher;
 use Thedevkitchen\CmsSearch\Model\Queue\HostReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexProcessorInterface;
@@ -23,6 +24,7 @@ class HostReindexProcessorTest extends TestCase
     private StoreContextProvider&MockObject $stores;
     private HostReindexer&MockObject $reindexer;
     private LoggerInterface&MockObject $logger;
+    private StoreListRefresher&MockObject $refresher;
     /** @var list<array{0: list<int>, 1: list<int>}> host ids and store ids of every reindex() call */
     private array $calls = [];
 
@@ -32,6 +34,7 @@ class HostReindexProcessorTest extends TestCase
         $this->stores = $this->createMock(StoreContextProvider::class);
         $this->reindexer = $this->createMock(HostReindexer::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->refresher = $this->createMock(StoreListRefresher::class);
         $this->calls = [];
     }
 
@@ -48,7 +51,7 @@ class HostReindexProcessorTest extends TestCase
 
     private function processor(): HostReindexProcessor
     {
-        return new HostReindexProcessor($this->affected, $this->stores, $this->reindexer, $this->logger);
+        return new HostReindexProcessor($this->affected, $this->stores, $this->reindexer, $this->logger, $this->refresher);
     }
 
     private function recordReindex(): void
@@ -198,7 +201,7 @@ class HostReindexProcessorTest extends TestCase
     /**
      * The processor runs inside the consumer: it must never save through repositories or models (that would loop
      * through the after-commit flush plugin and publish again) nor publish. Its only collaborators are the host
-     * resolver, the store views, the host reindexer and the logger.
+     * resolver, the store views, the host reindexer, the logger and the store list refresher.
      */
     public function testTheProcessorCanOnlyResolveAndReindex(): void
     {
@@ -206,12 +209,31 @@ class HostReindexProcessorTest extends TestCase
             static fn (\ReflectionParameter $p): string => (string) $p->getType(),
             (new \ReflectionMethod(HostReindexProcessor::class, '__construct'))->getParameters()
         );
-        $this->assertSame([AffectedHosts::class, StoreContextProvider::class, HostReindexer::class, LoggerInterface::class], $types);
+        $this->assertSame([AffectedHosts::class, StoreContextProvider::class, HostReindexer::class, LoggerInterface::class, StoreListRefresher::class], $types);
         foreach ([HostReindexProcessor::class, HostReindexer::class, AffectedHosts::class] as $class) {
             $code = (string) file_get_contents((string) (new \ReflectionClass($class))->getFileName());
             foreach (['Repository', 'Publisher', 'MessageSender', 'ReindexMessage(', '->save(', '->delete(', 'ObjectManager'] as $forbidden) {
                 $this->assertStringNotContainsString($forbidden, $code, "$class must not use $forbidden");
             }
         }
+    }
+
+    public function testTheStoreListIsComparedBeforeTheStoreViewsOfEveryMessageAreRead(): void
+    {
+        $order = [];
+        $this->refresher->expects($this->exactly(2))->method('refreshIfChanged')->willReturnCallback(function () use (&$order): bool {
+            $order[] = 'refresh';
+            return false;
+        });
+        $this->affected->method('resolve')->willReturn([[self::host('page', 5)]]);
+        $this->stores->method('all')->willReturnCallback(function () use (&$order): array {
+            $order[] = 'stores';
+            return [self::store(1)];
+        });
+        $this->recordReindex();
+        $processor = $this->processor();
+        $processor->process(new ReindexMessage('page', 5, 'save', 1760000000));
+        $processor->process(new ReindexMessage('page', 5, 'save', 1760000000));
+        $this->assertSame(['refresh', 'stores', 'refresh', 'stores'], $order);
     }
 }

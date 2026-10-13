@@ -133,6 +133,54 @@ class IndexManagerTest extends TestCase
         $this->assertSame(self::ALIAS, $manager->ensureAlias($this->store));
     }
 
+    public function testTheClusterIsAskedOnlyOncePerAliasAndProcess(): void
+    {
+        $this->indices->expects($this->once())->method('existsAlias')->willReturn(true);
+        $this->indices->method('getMapping')->willReturn([self::ALIAS . '_v3' => self::mapping()]);
+        $manager = $this->manager();
+        foreach ([1, 2, 3] as $ignored) {
+            $this->assertSame(self::ALIAS, $manager->ensureAlias($this->store));
+        }
+    }
+
+    public function testACreatedAliasIsRememberedToo(): void
+    {
+        $this->indices->expects($this->once())->method('existsAlias')->willReturn(false);
+        $this->indices->expects($this->once())->method('create')->willReturn(['acknowledged' => true]);
+        $manager = $this->manager();
+        $this->assertSame(self::ALIAS, $manager->ensureAlias($this->store));
+        $this->assertSame(self::ALIAS, $manager->ensureAlias($this->store));
+    }
+
+    public function testAFailedIncrementalWriteMakesTheNextEnsureAliasAskTheClusterAgain(): void
+    {
+        $this->indices->expects($this->exactly(2))->method('existsAlias')->willReturn(true);
+        $this->indices->method('getMapping')->willReturn([self::ALIAS . '_v3' => self::mapping()]);
+        $this->client->method('bulk')->willReturn(['errors' => true, 'items' => [
+            ['delete' => ['_id' => 'page_6', 'status' => 404, 'error' => ['type' => 'index_not_found_exception', 'reason' => 'no such index']]],
+        ]]);
+        $manager = $this->manager();
+        $manager->ensureAlias($this->store);
+        try {
+            $manager->bulk(self::ALIAS, [['action' => 'delete', 'id' => 'page_6']], true);
+            $this->fail('the failed write must throw');
+        } catch (IndexingException) {
+            // expected: the handler retries the message
+        }
+        $manager->ensureAlias($this->store); // asks again
+        $manager->ensureAlias($this->store); // remembered again
+    }
+
+    public function testDroppingOrphansForgetsTheRememberedAliases(): void
+    {
+        $this->indices->expects($this->exactly(2))->method('existsAlias')->willReturn(true);
+        $this->indices->method('getMapping')->willReturn([self::ALIAS . '_v3' => self::mapping()]);
+        $manager = $this->manager();
+        $manager->ensureAlias($this->store);
+        $this->assertSame([], $manager->dropOrphans());
+        $manager->ensureAlias($this->store);
+    }
+
     /** @return array<string, array{array<string, mixed>, string}> */
     public static function outdatedMappings(): array
     {

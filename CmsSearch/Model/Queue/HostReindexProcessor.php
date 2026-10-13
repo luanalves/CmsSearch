@@ -9,6 +9,7 @@ use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
 use Thedevkitchen\CmsSearch\Model\Indexer\HostReindexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreContextProvider;
+use Thedevkitchen\CmsSearch\Model\Indexer\StoreListRefresher;
 use Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts;
 
 /**
@@ -18,6 +19,8 @@ use Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts;
  *
  * - Store views: the message store view (set only by the reindex command) or every store view, restricted to the
  *   message website when it has one (terms: their pages are only visible in the store views of that website).
+ *   The store list is compared with the database before every message (StoreListRefresher): a store view added,
+ *   deleted or re-rooted since the consumer started is seen without a restart.
  *   Without any concerned store view the hosts are not even read.
  * - Hosts are processed chunk by chunk as AffectedHosts streams them, but only for page, category and product messages
  *   (keyset paging). Block and widget instance messages are NOT bounded: AffectedHosts::ofBlock / ofWidgetInstance
@@ -36,12 +39,16 @@ class HostReindexProcessor implements ReindexProcessorInterface
         private readonly AffectedHosts $affectedHosts,
         private readonly StoreContextProvider $storeContextProvider,
         private readonly HostReindexer $hostReindexer,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly StoreListRefresher $storeListRefresher
     ) {
     }
 
     public function process(ReindexMessageInterface $message): void
     {
+        if ($this->storeListRefresher->refreshIfChanged()) {
+            $this->logger->info('store list changed since the consumer started: reinitialised');
+        }
         $chunks = $this->affectedHosts->resolve($message); // throws now for an unsupported entity type
         $stores = $this->storesOf($message);
         $hosts = 0;
