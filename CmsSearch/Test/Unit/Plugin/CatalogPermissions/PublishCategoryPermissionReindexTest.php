@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Test\Unit\Plugin\CatalogPermissions;
 
 use Magento\CatalogPermissions\Model\Indexer\Category as PermissionIndexer;
+use Magento\CatalogPermissions\Model\Indexer\Product as ProductPermissionIndexer;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
@@ -57,6 +58,16 @@ class PublishCategoryPermissionReindexTest extends TestCase
         $subject = $this->createMock(PermissionIndexer::class);
         $this->assertNull($this->plugin()->afterExecuteRow($subject, null, '37'));
         $this->assertSame(['category 37 save'], $this->calls);
+    }
+
+    public function testTheProductPermissionIndexerPublishesNothingBecauseItsIdsAreProductIds(): void
+    {
+        $subject = $this->createMock(ProductPermissionIndexer::class);
+        $plugin = $this->plugin();
+        $plugin->afterExecuteRow($subject, null, '2199');
+        $plugin->afterExecuteList($subject, null, [2199, 2200]);
+        $plugin->afterExecute($subject, null, [2201]);
+        $this->assertSame([], $this->calls);
     }
 
     public function testExecuteListAsksForEachDistinctPositiveId(): void

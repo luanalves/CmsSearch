@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Plugin\CatalogPermissions;
 
 use Magento\CatalogPermissions\Model\Indexer\Category as PermissionIndexer;
+use Magento\CatalogPermissions\Model\Indexer\Product as ProductPermissionIndexer;
 use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
@@ -21,6 +22,9 @@ use Thedevkitchen\CmsSearch\Model\Reference\CategorySubtreeReader;
  * removeObsoleteIndexData() walks the children), so a deny on a parent changes the guest permission of every
  * descendant: the ids are expanded with their descendants (by path) before publishing. A failing subtree lookup is
  * logged (class only) and the original ids are still published.
+ *
+ * The product permission indexer EXTENDS the category one (the plugin is inherited) but receives PRODUCT ids: it is
+ * skipped, otherwise product ids would be published as category ids.
  *
  * executeFull publishes nothing (one message per category of the catalog would be unbounded): a full permission
  * reindex requires `thedevkitchen:cmssearch:reindex --sync`. Never throws: the permission reindex must not fail because
@@ -42,7 +46,9 @@ class PublishCategoryPermissionReindex
      */
     public function afterExecuteRow(PermissionIndexer $subject, $result, $id)
     {
-        $this->publishAll([$id]);
+        if (!$subject instanceof ProductPermissionIndexer) {
+            $this->publishAll([$id]);
+        }
         return $result;
     }
 
@@ -53,7 +59,9 @@ class PublishCategoryPermissionReindex
      */
     public function afterExecuteList(PermissionIndexer $subject, $result, $ids)
     {
-        $this->publishAll($ids);
+        if (!$subject instanceof ProductPermissionIndexer) {
+            $this->publishAll($ids);
+        }
         return $result;
     }
 
@@ -64,7 +72,9 @@ class PublishCategoryPermissionReindex
      */
     public function afterExecute(PermissionIndexer $subject, $result, $ids)
     {
-        $this->publishAll($ids);
+        if (!$subject instanceof ProductPermissionIndexer) {
+            $this->publishAll($ids);
+        }
         return $result;
     }
 
