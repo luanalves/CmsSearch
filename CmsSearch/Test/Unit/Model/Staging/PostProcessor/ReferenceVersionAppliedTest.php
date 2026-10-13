@@ -10,19 +10,21 @@ use Magento\Cms\Api\Data\BlockInterface;
 use Magento\Cms\Api\Data\PageInterface;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
+use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
+use Thedevkitchen\CmsSearch\Model\Queue\SentMessageLog;
 use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\ReferenceVersionApplied;
 
 class ReferenceVersionAppliedTest extends TestCase
 {
     /** @return list<string> */
-    private function apply(array $ids, string $entityType): array
+    private function apply(array $ids, string $entityType, ?SentMessageLog $log = null): array
     {
         $calls = [];
         $publisher = $this->createMock(ReindexPublisherInterface::class);
         $publisher->method('publish')->willReturnCallback(function (string $type, int $id, string $action) use (&$calls): void {
             $calls[] = "$type $id $action";
         });
-        (new ReferenceVersionApplied($publisher))->execute(4, 5, $ids, $entityType);
+        (new ReferenceVersionApplied($publisher, $log ?? new SentMessageLog()))->execute(4, 5, $ids, $entityType);
         return $calls;
     }
 
@@ -42,5 +44,16 @@ class ReferenceVersionAppliedTest extends TestCase
         $this->assertSame([], $this->apply([5], PageInterface::class)); // PageVersionApplied (Plan 3) handles pages
         $this->assertSame([], $this->apply([5], 'Magento\\SalesRule\\Api\\Data\\RuleInterface'));
         $this->assertSame([], $this->apply([5], ''));
+    }
+
+    public function testAnEntityTheApplierRunAlreadySentIsSkipped(): void
+    {
+        $log = new SentMessageLog();
+        $log->open();
+        $log->record(new ReindexMessage('block', 5, 'save', 1760000000)); // the applier's re-save of block 5
+        $this->assertSame(['block 6 staging', 'product 5 staging'], array_merge(
+            $this->apply([5, 6], BlockInterface::class, $log),
+            $this->apply([5], ProductInterface::class, $log) // another entity type with the same id still publishes
+        ));
     }
 }

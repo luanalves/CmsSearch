@@ -8,15 +8,19 @@ use Magento\Cms\Api\Data\PageInterface;
 use Magento\Staging\Model\StagingApplier\PostProcessorInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
+use Thedevkitchen\CmsSearch\Model\Queue\SentMessageLog;
 
 /**
  * StagingApplier post-processor (cron staging_apply_version): when scheduled content starts or ends, ask for a
- * reindex of each page that changed (D9). It never reads versions: the consumer reads the page's current state.
+ * reindex of each page that changed (D9). It never reads versions: the consumer reads the page's current state. A page
+ * whose re-save in the same applier run already sent page/save is skipped (SentMessageLog).
  */
 class PageVersionApplied implements PostProcessorInterface
 {
-    public function __construct(private readonly ReindexPublisherInterface $publisher)
-    {
+    public function __construct(
+        private readonly ReindexPublisherInterface $publisher,
+        private readonly SentMessageLog $sentLog
+    ) {
     }
 
     /**
@@ -34,6 +38,9 @@ class PageVersionApplied implements PostProcessorInterface
                 continue;
             }
             $seen[$pageId] = true;
+            if ($this->sentLog->wasSent(ReindexMessageInterface::ENTITY_PAGE, $pageId)) {
+                continue; // the applier's re-save of this page already asked for its reindex (after the version switch)
+            }
             $this->publisher->publish(
                 ReindexMessageInterface::ENTITY_PAGE,
                 $pageId,

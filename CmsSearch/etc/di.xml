@@ -147,6 +147,8 @@
                 <item name="thedevkitchen_cmssearch_references" xsi:type="object">Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\ReferenceVersionApplied</item>
             </argument>
         </arguments>
+        <!-- Plan 7: one message per applied block/page (the post-processors skip what the re-save already sent). -->
+        <plugin name="thedevkitchen_cmssearch_sent_message_log" type="Thedevkitchen\CmsSearch\Plugin\Staging\OpenSentMessageLog"/>
     </type>
     <type name="Magento\Framework\Console\CommandListInterface">
         <arguments>

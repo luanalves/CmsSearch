@@ -11,14 +11,16 @@ use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 /**
  * Sends one reindex message to the broker now. Never throws: a failure (broker down, wrong credentials, an encoding
  * error...) is logged with the message, so it can be replayed with bin/magento thedevkitchen:cmssearch:reindex, and
- * false is returned. Even a failing logger is swallowed.
+ * false is returned. Even a failing logger is swallowed. A message sent while a Staging application runs is recorded
+ * in SentMessageLog.
  */
 class MessageSender
 {
     public function __construct(
         private readonly PublisherInterface $publisher,
         private readonly MessageCodec $codec,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly SentMessageLog $sentLog
     ) {
     }
 
@@ -28,6 +30,7 @@ class MessageSender
         try {
             $json = $this->codec->encode($message);
             $this->publisher->publish(ReindexMessageInterface::TOPIC, $json);
+            $this->sentLog->record($message);
             return true;
         } catch (\Throwable $exception) {
             try {

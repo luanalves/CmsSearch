@@ -12,6 +12,7 @@ use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageCodec;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
+use Thedevkitchen\CmsSearch\Model\Queue\SentMessageLog;
 
 class MessageSenderTest extends TestCase
 {
@@ -23,7 +24,7 @@ class MessageSenderTest extends TestCase
         $publisher->expects($this->once())->method('publish')->with('thedevkitchen.cmssearch.reindex', self::JSON);
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->never())->method('error');
-        $sender = new MessageSender($publisher, new MessageCodec(), $logger);
+        $sender = new MessageSender($publisher, new MessageCodec(), $logger, new SentMessageLog());
         $this->assertTrue($sender->send(new ReindexMessage('page', 7, 'save', 1760000000)));
     }
 
@@ -44,7 +45,7 @@ class MessageSenderTest extends TestCase
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())->method('error')
             ->with($this->stringContains('publish failed ' . self::JSON . ': ' . $failure->getMessage()));
-        $sender = new MessageSender($publisher, new MessageCodec(), $logger);
+        $sender = new MessageSender($publisher, new MessageCodec(), $logger, new SentMessageLog());
         $this->assertFalse($sender->send(new ReindexMessage('page', 7, 'save', 1760000000)));
     }
 
@@ -56,7 +57,7 @@ class MessageSenderTest extends TestCase
         $publisher->expects($this->never())->method('publish');
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())->method('error')->with($this->stringContains('publish failed (unencodable message): cannot encode'));
-        $this->assertFalse((new MessageSender($publisher, new MessageCodec(), $logger))->send($message));
+        $this->assertFalse((new MessageSender($publisher, new MessageCodec(), $logger, new SentMessageLog()))->send($message));
     }
 
     public function testAFailingLoggerIsNeverThrownEither(): void
@@ -65,6 +66,23 @@ class MessageSenderTest extends TestCase
         $publisher->method('publish')->willThrowException(new \RuntimeException('Connection refused'));
         $logger = $this->createMock(LoggerInterface::class);
         $logger->method('error')->willThrowException(new \UnexpectedValueException('log file not writable'));
-        $this->assertFalse((new MessageSender($publisher, new MessageCodec(), $logger))->send(new ReindexMessage('page', 7, 'save', 1760000000)));
+        $this->assertFalse((new MessageSender($publisher, new MessageCodec(), $logger, new SentMessageLog()))->send(new ReindexMessage('page', 7, 'save', 1760000000)));
+    }
+
+    public function testASentMessageIsRecordedAndAFailedOneIsNot(): void
+    {
+        $log = new SentMessageLog();
+        $log->open();
+        $publisher = $this->createMock(PublisherInterface::class);
+        $publisher->method('publish')->willReturnCallback(static function (string $topic, string $json): void {
+            if (str_contains($json, '"entity_id":8')) {
+                throw new \RuntimeException('broker down');
+            }
+        });
+        $sender = new MessageSender($publisher, new MessageCodec(), $this->createMock(LoggerInterface::class), $log);
+        $this->assertTrue($sender->send(new ReindexMessage('block', 7, 'save', 1760000000)));
+        $this->assertFalse($sender->send(new ReindexMessage('block', 8, 'save', 1760000000)));
+        $this->assertTrue($log->wasSent('block', 7));
+        $this->assertFalse($log->wasSent('block', 8));
     }
 }
