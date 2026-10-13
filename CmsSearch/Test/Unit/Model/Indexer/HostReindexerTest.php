@@ -30,8 +30,11 @@ class HostReindexerTest extends TestCase
         $pages = $this->createMock(PageIndexer::class);
         $pages->method('reindex')->willReturnCallback(function (array $ids, array $stores, array $targets = []): array {
             $this->assertSame([], $targets, 'the consumer always writes incrementally');
-            $this->assertCount(1, $stores);
-            $this->calls[] = sprintf('pages %s @%d', implode(',', $ids), $stores[0]->getStoreId());
+            $this->calls[] = sprintf(
+                'pages %s @%s',
+                implode(',', $ids),
+                implode(',', array_map(static fn (StoreContext $store): int => $store->getStoreId(), $stores))
+            );
             if ($this->failure !== null) {
                 throw $this->failure;
             }
@@ -82,12 +85,33 @@ class HostReindexerTest extends TestCase
             ['host_type' => 'page', 'host_id' => 9, 'store_id' => 6], // a store view this message does not cover
         ], [self::store(1), self::store(2)]);
         $this->assertSame([
-            'BEGIN', 'graph page 4 @1', 'pages 4 @1', 'COMMIT', 'BEGIN', 'graph category 37 @1', 'categories 37 @1', 'COMMIT',
-            'BEGIN', 'graph product 7 @1', 'products 7 @1', 'COMMIT',
-            'BEGIN', 'graph page 4,5 @2', 'pages 4,5 @2', 'COMMIT', 'BEGIN', 'graph category 37 @2', 'categories 37 @2', 'COMMIT',
-            'BEGIN', 'graph product 7 @2', 'products 7 @2', 'COMMIT',
+            'BEGIN', 'graph page 4 @1', 'graph page 4 @2', 'pages 4 @1,2', 'COMMIT',
+            'BEGIN', 'graph page 5 @2', 'pages 5 @2', 'COMMIT',
+            'BEGIN', 'graph category 37 @1', 'categories 37 @1', 'COMMIT', 'BEGIN', 'graph product 7 @1', 'products 7 @1', 'COMMIT',
+            'BEGIN', 'graph category 37 @2', 'categories 37 @2', 'COMMIT', 'BEGIN', 'graph product 7 @2', 'products 7 @2', 'COMMIT',
         ], $this->calls);
         $this->assertSame(['page' => 3, 'category' => 2, 'product' => 2], $counts);
+    }
+
+    public function testThePagesOfEveryStoreViewAreWrittenByOneIndexerCallPerBatch(): void
+    {
+        $stores = array_map(static fn (int $id): StoreContext => self::store($id), range(1, 7));
+        $counts = $this->reindexer(2)->reindex([
+            ['host_type' => 'page', 'host_id' => 3, 'store_id' => null],
+            ['host_type' => 'page', 'host_id' => 1, 'store_id' => null],
+            ['host_type' => 'page', 'host_id' => 2, 'store_id' => null],
+        ], $stores);
+        $graph = static fn (string $ids): array => array_map(static fn (int $store): string => "graph page $ids @$store", range(1, 7));
+        // ONE PageIndexer call per batch for the 7 store views: the page content is extracted once, not 7 times
+        $this->assertSame(array_merge(
+            ['BEGIN'],
+            $graph('1,2'),
+            ['pages 1,2 @1,2,3,4,5,6,7', 'COMMIT'],
+            ['BEGIN'],
+            $graph('3'),
+            ['pages 3 @1,2,3,4,5,6,7', 'COMMIT']
+        ), $this->calls);
+        $this->assertSame(['page' => 21, 'category' => 0, 'product' => 0], $counts);
     }
 
     public function testHostsAreProcessedInBatches(): void
@@ -135,7 +159,7 @@ class HostReindexerTest extends TestCase
             $this->assertSame($this->failure, $exception);
         }
         // graph refresh and write are one transaction: the failure rolls the new graph back (the retry sees the old hosts)
-        $this->assertSame(['BEGIN', 'graph page 1 @1', 'pages 1 @1', 'ROLLBACK'], $this->calls);
+        $this->assertSame(['BEGIN', 'graph page 1 @1', 'graph page 1 @2', 'pages 1 @1,2', 'ROLLBACK'], $this->calls);
     }
 
     public function testAFailingGraphRefreshRollsBackAndNothingIsWritten(): void
