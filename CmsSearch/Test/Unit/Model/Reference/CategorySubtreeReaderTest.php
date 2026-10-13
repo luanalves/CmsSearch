@@ -28,4 +28,18 @@ class CategorySubtreeReaderTest extends TestCase
             $this->assertSame([], $reader->descendantIds($path), $path);
         }
     }
+
+    public function testWithDescendantsReadsThePathsOnceAndWalksEachTopPathOnly(): void
+    {
+        // paths of 5, 6 and 9; 1/2/5/6 is under 1/2/5, so only two walks follow
+        $reader = new CategorySubtreeReader($this->resourceReturning([], [['1/2/5', '1/2/5/6', '1/3/9'], [6, 7], [10]]));
+        $this->assertSame([5, 6, 7, 9, 10], $reader->withDescendants([9, 5, 6, 5, 0]));
+        $this->assertSame([['entity_id IN (?)', [9, 5, 6]], ['path LIKE ?', '1/2/5/%'], ['path LIKE ?', '1/3/9/%']], $this->wheres);
+    }
+
+    public function testWithDescendantsOfNothingReadsNothing(): void
+    {
+        $reader = new CategorySubtreeReader($this->resourceReturning());
+        $this->assertSame([], $reader->withDescendants([0, -3]));
+    }
 }

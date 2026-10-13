@@ -6,7 +6,9 @@ namespace Thedevkitchen\CmsSearch\Test\Unit\Plugin\CatalogPermissions;
 
 use Magento\CatalogPermissions\Model\Indexer\Category as PermissionIndexer;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
+use Thedevkitchen\CmsSearch\Model\Reference\CategorySubtreeReader;
 use Thedevkitchen\CmsSearch\Plugin\CatalogPermissions\PublishCategoryPermissionReindex;
 
 /**
@@ -17,6 +19,11 @@ class PublishCategoryPermissionReindexTest extends TestCase
     /** @var list<string> */
     private array $calls = [];
 
+    /** @var array<int, list<int>> category id => descendants (the lookup stub) */
+    private array $children = [];
+    private bool $lookupFails = false;
+    private int $logged = 0;
+
     private function plugin(bool $failing = false): PublishCategoryPermissionReindex
     {
         $publisher = $this->createMock(ReindexPublisherInterface::class);
@@ -26,7 +33,23 @@ class PublishCategoryPermissionReindexTest extends TestCase
             }
             $this->calls[] = "$type $id $action";
         });
-        return new PublishCategoryPermissionReindex($publisher);
+        $reader = $this->createMock(CategorySubtreeReader::class);
+        $reader->method('withDescendants')->willReturnCallback(function (array $ids): array {
+            if ($this->lookupFails) {
+                throw new \RuntimeException('secret sql detail');
+            }
+            $all = $ids;
+            foreach ($ids as $id) {
+                $all = array_merge($all, $this->children[$id] ?? []);
+            }
+            return $all;
+        });
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->method('error')->willReturnCallback(function (string $message) use (&$loggedMessage): void {
+            $this->logged++;
+            $this->assertStringNotContainsString('secret', $message, 'class only');
+        });
+        return new PublishCategoryPermissionReindex($publisher, $reader, $logger);
     }
 
     public function testExecuteRowAsksForTheCategory(): void
@@ -69,5 +92,35 @@ class PublishCategoryPermissionReindexTest extends TestCase
     public function testThereIsNoFullReindexHook(): void
     {
         $this->assertFalse(method_exists(PublishCategoryPermissionReindex::class, 'afterExecuteFull'));
+    }
+
+    public function testADenyOnAParentReachesItsDescendants(): void
+    {
+        $this->children = [5 => [6, 7]];
+        $subject = $this->createMock(PermissionIndexer::class);
+        $this->plugin()->afterExecuteRow($subject, null, 5);
+        $this->assertSame(['category 5 save', 'category 6 save', 'category 7 save'], $this->calls);
+    }
+
+    public function testListAndMviewEntryPointsExpandTheSubtreeAndDedupe(): void
+    {
+        $this->children = [5 => [6, 7], 8 => [7, 9]];
+        $subject = $this->createMock(PermissionIndexer::class);
+        $plugin = $this->plugin();
+        $plugin->afterExecuteList($subject, null, [5, 8, 6]);
+        $plugin->afterExecute($subject, null, [8]);
+        $this->assertSame([
+            'category 5 save', 'category 8 save', 'category 6 save', 'category 7 save', 'category 9 save',
+            'category 8 save', 'category 7 save', 'category 9 save',
+        ], $this->calls);
+    }
+
+    public function testAFailingSubtreeLookupStillPublishesTheOriginalIdsAndLogsTheClassOnly(): void
+    {
+        $this->lookupFails = true;
+        $subject = $this->createMock(PermissionIndexer::class);
+        $this->plugin()->afterExecuteList($subject, 'kept', [5, 5, 9]);
+        $this->assertSame(['category 5 save', 'category 9 save'], $this->calls);
+        $this->assertSame(1, $this->logged);
     }
 }

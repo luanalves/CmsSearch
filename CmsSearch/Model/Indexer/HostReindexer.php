@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\Indexer;
 
+use Magento\Framework\App\ResourceConnection;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
 use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
@@ -25,6 +26,7 @@ class HostReindexer
         private readonly PageIndexer $pageIndexer,
         private readonly CategoryIndexer $categoryIndexer,
         private readonly ProductBlockTextWriter $productBlockTextWriter,
+        private readonly ResourceConnection $resource,
         private readonly int $batchSize = 200
     ) {
     }
@@ -58,16 +60,40 @@ class HostReindexer
                 $ids = array_keys($plan[$storeId][$type] ?? []);
                 sort($ids);
                 foreach (array_chunk($ids, max(1, $this->batchSize)) as $batch) {
-                    $this->blockReferenceResolver->refreshForHosts($type, $batch, $storeId);
-                    match ($type) {
-                        HostType::PAGE => $this->pageIndexer->reindex($batch, [$store]),
-                        HostType::CATEGORY => $this->categoryIndexer->reindex($batch, [$store]),
-                        HostType::PRODUCT => $this->productBlockTextWriter->refresh($batch, $storeId),
-                    };
+                    $this->reindexBatch($type, $batch, $store);
                     $counts[$type] += count($batch);
                 }
             }
         }
         return $counts;
+    }
+
+    /**
+     * Graph refresh and index write of one batch are ONE database transaction. The graph is the only record of which
+     * hosts a deleted/re-placed widget or a deleted/renamed block used to reach: if the write failed after the graph
+     * had committed, the retry would recompute the hosts from the new graph, miss the old ones and leave their removed
+     * text searchable. The OpenSearch write is not transactional, but on failure the rollback restores the old graph
+     * (the retry sees the old hosts) and every write is idempotent. ReferenceStore's own transaction nests; this is the
+     * outermost one on the consumer, which holds no pending producer messages (the after-commit flush plugin finds an
+     * empty buffer; the rollback discard likewise).
+     *
+     * @param list<int> $batch
+     */
+    private function reindexBatch(string $type, array $batch, StoreContext $store): void
+    {
+        $connection = $this->resource->getConnection();
+        $connection->beginTransaction();
+        try {
+            $this->blockReferenceResolver->refreshForHosts($type, $batch, $store->getStoreId());
+            match ($type) {
+                HostType::PAGE => $this->pageIndexer->reindex($batch, [$store]),
+                HostType::CATEGORY => $this->categoryIndexer->reindex($batch, [$store]),
+                HostType::PRODUCT => $this->productBlockTextWriter->refresh($batch, $store->getStoreId()),
+            };
+            $connection->commit();
+        } catch (\Throwable $exception) {
+            $connection->rollBack();
+            throw $exception;
+        }
     }
 }

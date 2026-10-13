@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Test\Unit\Model\Indexer;
 
+use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\DB\Adapter\AdapterInterface;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Model\Indexer\CategoryIndexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
@@ -47,7 +49,22 @@ class HostReindexerTest extends TestCase
             $this->calls[] = sprintf('products %s @%d', implode(',', $ids), $storeId);
             return ['written' => 0, 'deleted' => 0, 'unchanged' => 0];
         });
-        return new HostReindexer($graph, $pages, $categories, $products, $batchSize);
+        $connection = $this->createMock(AdapterInterface::class);
+        $connection->method('beginTransaction')->willReturnCallback(function () use ($connection) {
+            $this->calls[] = 'BEGIN';
+            return $connection;
+        });
+        $connection->method('commit')->willReturnCallback(function () use ($connection) {
+            $this->calls[] = 'COMMIT';
+            return $connection;
+        });
+        $connection->method('rollBack')->willReturnCallback(function () use ($connection) {
+            $this->calls[] = 'ROLLBACK';
+            return $connection;
+        });
+        $resource = $this->createMock(ResourceConnection::class);
+        $resource->method('getConnection')->willReturn($connection);
+        return new HostReindexer($graph, $pages, $categories, $products, $resource, $batchSize);
     }
 
     private static function store(int $id): StoreContext
@@ -65,8 +82,10 @@ class HostReindexerTest extends TestCase
             ['host_type' => 'page', 'host_id' => 9, 'store_id' => 6], // a store view this message does not cover
         ], [self::store(1), self::store(2)]);
         $this->assertSame([
-            'graph page 4 @1', 'pages 4 @1', 'graph category 37 @1', 'categories 37 @1', 'graph product 7 @1', 'products 7 @1',
-            'graph page 4,5 @2', 'pages 4,5 @2', 'graph category 37 @2', 'categories 37 @2', 'graph product 7 @2', 'products 7 @2',
+            'BEGIN', 'graph page 4 @1', 'pages 4 @1', 'COMMIT', 'BEGIN', 'graph category 37 @1', 'categories 37 @1', 'COMMIT',
+            'BEGIN', 'graph product 7 @1', 'products 7 @1', 'COMMIT',
+            'BEGIN', 'graph page 4,5 @2', 'pages 4,5 @2', 'COMMIT', 'BEGIN', 'graph category 37 @2', 'categories 37 @2', 'COMMIT',
+            'BEGIN', 'graph product 7 @2', 'products 7 @2', 'COMMIT',
         ], $this->calls);
         $this->assertSame(['page' => 3, 'category' => 2, 'product' => 2], $counts);
     }
@@ -77,7 +96,9 @@ class HostReindexerTest extends TestCase
             static fn (int $id): array => ['host_type' => 'product', 'host_id' => $id, 'store_id' => 1],
             [5, 1, 3, 3]
         ), [self::store(1)]);
-        $this->assertSame(['graph product 1,3 @1', 'products 1,3 @1', 'graph product 5 @1', 'products 5 @1'], $this->calls);
+        $this->assertSame([
+            'BEGIN', 'graph product 1,3 @1', 'products 1,3 @1', 'COMMIT', 'BEGIN', 'graph product 5 @1', 'products 5 @1', 'COMMIT',
+        ], $this->calls);
     }
 
     public function testNoHostOrNoStoreViewDoesNothing(): void
@@ -113,6 +134,38 @@ class HostReindexerTest extends TestCase
         } catch (\RuntimeException $exception) {
             $this->assertSame($this->failure, $exception);
         }
-        $this->assertSame(['graph page 1 @1', 'pages 1 @1'], $this->calls);
+        // graph refresh and write are one transaction: the failure rolls the new graph back (the retry sees the old hosts)
+        $this->assertSame(['BEGIN', 'graph page 1 @1', 'pages 1 @1', 'ROLLBACK'], $this->calls);
+    }
+
+    public function testAFailingGraphRefreshRollsBackAndNothingIsWritten(): void
+    {
+        $graph = $this->createMock(BlockReferenceResolver::class);
+        $graph->method('refreshForHosts')->willThrowException(new \RuntimeException('deadlock'));
+        $pages = $this->createMock(PageIndexer::class);
+        $pages->expects($this->never())->method('reindex');
+        $rolledBack = 0;
+        $connection = $this->createMock(AdapterInterface::class);
+        $connection->expects($this->never())->method('commit');
+        $connection->method('rollBack')->willReturnCallback(function () use (&$rolledBack, $connection) {
+            $rolledBack++;
+            return $connection;
+        });
+        $resource = $this->createMock(ResourceConnection::class);
+        $resource->method('getConnection')->willReturn($connection);
+        $reindexer = new HostReindexer(
+            $graph,
+            $pages,
+            $this->createMock(CategoryIndexer::class),
+            $this->createMock(ProductBlockTextWriter::class),
+            $resource
+        );
+        try {
+            $reindexer->reindex([['host_type' => 'page', 'host_id' => 1, 'store_id' => 1]], [self::store(1)]);
+            $this->fail('the failure must propagate');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('deadlock', $exception->getMessage());
+        }
+        $this->assertSame(1, $rolledBack);
     }
 }
