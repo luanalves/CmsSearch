@@ -7,6 +7,8 @@ namespace Thedevkitchen\CmsSearch\Model\Indexer;
 use Thedevkitchen\CmsSearch\Exception\IndexingException;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\PreparedContent;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
+use Thedevkitchen\CmsSearch\Model\Reference\BlockTextResolver;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
 
 /**
  * Re-reads the current state of a set of CMS pages and writes the result to the index of EVERY given store view: a
@@ -16,7 +18,7 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
  * TS-34) and stale documents of store views the page left are removed.
  *
  * Per batch: one call per reader (no N+1), content extracted at most once per page (lazily, only for a page visible
- * somewhere), one bulk request per store view; memory is bounded by the batch size.
+ * somewhere), one block text read and one bulk request per store view; memory is bounded by the batch size.
  *
  * Modes: incremental ($targets empty) writes through each store view's alias (created when missing) and deletes;
  * full rebuild ($targets = store id => new version from IndexManager::createIndex()) only adds visible pages, no
@@ -26,6 +28,11 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
  * views; that store view is skipped for the rest of the call and one IndexingException naming the failed store views
  * is thrown at the end (transient: the handler retries the whole, idempotent, call). Messages carry ids and the
  * already value-free IndexManager text only, never content. Read failures and programming errors propagate as is.
+ *
+ * Block text (Plan 6): a visible page carries the text of the blocks it publishes in that store view
+ * (BlockTextResolver reads the reference graph: the CALLER refreshes the graph of the pages first - HostReindexer and
+ * FullReindexer; this class never writes the graph and never publishes messages). The block text is read per store
+ * view because block visibility is store-scoped; the page's own content is still extracted once per page.
  *
  * Used by the queue processor and by FullReindexer only.
  */
@@ -40,6 +47,7 @@ class PageIndexer
         private readonly VisibilityChecker $visibilityChecker,
         private readonly DocumentBuilder $documentBuilder,
         private readonly IndexManager $indexManager,
+        private readonly BlockTextResolver $blockTextResolver, // Plan 6
         private readonly int $batchSize = 200
     ) {
     }
@@ -106,15 +114,13 @@ class PageIndexer
                 if (isset($failures[$storeId])) {
                     continue;
                 }
-                $operations = [];
-                $upserted = 0;
-                $deleted = 0;
+                /** @var array<int, true> $visible page id => visible in this store view */
+                $visible = [];
                 foreach ($batch as $pageId) {
                     $page = $pages[$pageId] ?? null;
                     $link = $links[$pageId] ?? null;
                     $type = $link === null ? null : ($types[$link['type_id']] ?? null);
                     $term = $link === null ? null : ($terms[$link['term_id']] ?? null);
-                    $id = DocumentBuilder::documentId($pageId);
                     $visibility = $this->visibilityChecker->check(
                         $page,
                         $link,
@@ -124,12 +130,34 @@ class PageIndexer
                         in_array($storeId, $shadowed[$pageId] ?? [], true)
                     );
                     if ($visibility === VisibilityChecker::VISIBLE) {
-                        // check() returned VISIBLE, so page, type and term are set (build() is non-nullable)
+                        $visible[$pageId] = true;
+                    }
+                }
+                // Plan 6: one graph read per store view and batch, only for the pages that get a document here
+                $enrichments = $visible === []
+                    ? []
+                    : $this->blockTextResolver->forHosts(HostType::PAGE, array_keys($visible), $storeId);
+                $operations = [];
+                $upserted = 0;
+                $deleted = 0;
+                foreach ($batch as $pageId) {
+                    $id = DocumentBuilder::documentId($pageId);
+                    if (isset($visible[$pageId])) {
+                        // check() returned VISIBLE, so page, link, type and term are set (build() is non-nullable)
+                        $page = $pages[$pageId];
+                        $link = $links[$pageId];
                         $prepared[$pageId] ??= $this->documentBuilder->prepare($page);
                         $operations[] = [
                             'action' => 'index',
                             'id' => $id,
-                            'document' => $this->documentBuilder->build($page, $type, $term, $store, $prepared[$pageId]),
+                            'document' => $this->documentBuilder->build(
+                                $page,
+                                $types[$link['type_id']],
+                                $terms[$link['term_id']],
+                                $store,
+                                $prepared[$pageId],
+                                $enrichments[$pageId] ?? null
+                            ),
                         ];
                         $upserted++;
                     } elseif (!$full) {

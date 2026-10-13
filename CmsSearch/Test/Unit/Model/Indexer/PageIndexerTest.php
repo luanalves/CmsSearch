@@ -23,6 +23,8 @@ use Thedevkitchen\CmsSearch\Model\Indexer\PageSnapshotReader;
 use Thedevkitchen\CmsSearch\Model\Indexer\ShadowedPageReader;
 use Thedevkitchen\CmsSearch\Model\Indexer\TextExtractor;
 use Thedevkitchen\CmsSearch\Model\Indexer\VisibilityChecker;
+use Thedevkitchen\CmsSearch\Model\Reference\BlockTextResolver;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
 
 class PageIndexerTest extends TestCase
 {
@@ -34,6 +36,7 @@ class PageIndexerTest extends TestCase
     private ClassificationReader&MockObject $terms;
     private ShadowedPageReader&MockObject $shadows;
     private IndexManager&MockObject $indexManager;
+    private BlockTextResolver&MockObject $blockText;
     /** @var list<array{0: string, 1: list<string>, 2: bool}> target, "action id" list, incremental */
     private array $bulks = [];
     /** @var list<array{0: string, 1: string, 2: int}> target, document id, store_view_id of the document */
@@ -47,6 +50,7 @@ class PageIndexerTest extends TestCase
 
     protected function setUp(): void
     {
+        $this->blockText = $this->createMock(BlockTextResolver::class); // unconfigured: [] = no block text
         $this->pages = $this->createMock(PageSnapshotReader::class);
         $this->links = $this->createMock(PageLinkReader::class);
         $this->types = $this->createMock(ContentTypeReader::class);
@@ -116,6 +120,7 @@ class PageIndexerTest extends TestCase
             new VisibilityChecker(),
             $builder,
             $this->indexManager,
+            $this->blockText,
             $batchSize
         );
     }
@@ -345,6 +350,89 @@ class PageIndexerTest extends TestCase
         $this->indexManager->expects($this->never())->method('bulk');
         $this->expectExceptionMessage('database gone');
         $this->indexer()->reindex([1], [$this->store(2)]);
+    }
+
+    public function testVisiblePagesGetTheBlockTextOfEachStoreView(): void
+    {
+        $this->blockText->expects($this->exactly(2))->method('forHosts')
+            ->willReturnCallback(static fn (string $type, array $ids, int $storeId): array => $type === 'page' && $ids === [1, 3]
+                ? [1 => new HostEnrichment('Block of store ' . $storeId, [7]), 3 => new HostEnrichment('', [])]
+                : []);
+        $documents = [];
+        $this->indexManager = $this->createMock(IndexManager::class);
+        $this->indexManager->method('ensureAlias')->willReturnCallback(static fn (StoreContext $store): string => 'alias_' . $store->getStoreId());
+        $this->indexManager->method('bulk')->willReturnCallback(function (string $target, array $operations) use (&$documents): void {
+            foreach ($operations as $operation) {
+                $documents[$target][$operation['id']] = $operation['action'] === 'index'
+                    ? [$operation['document']['text'], $operation['document']['segment_ids']]
+                    : 'delete';
+            }
+        });
+        $this->indexer()->reindex([1, 3, 4], [$this->store(2), $this->store(3)]);
+        $this->assertSame([
+            'alias_2' => ['page_1' => ['x Block of store 2', [7]], 'page_3' => ['x', []], 'page_4' => 'delete'],
+            'alias_3' => ['page_1' => ['x Block of store 3', [7]], 'page_3' => ['x', []], 'page_4' => 'delete'],
+        ], $documents);
+        $this->assertSame([1 => 1, 3 => 1], $this->prepared, 'the page content is still extracted once per page');
+    }
+
+    public function testBlockTextIsReadPerStoreViewForThePagesVisibleThereAndPerBatch(): void
+    {
+        $this->storesOf = [3 => [3]]; // page 3 is visible in store view 3 only
+        $calls = [];
+        $this->blockText->method('forHosts')->willReturnCallback(function (string $type, array $ids, int $storeId) use (&$calls): array {
+            $calls[] = [$type, $ids, $storeId];
+            return [];
+        });
+        $this->indexer(2)->reindex([1, 3, 4, 5], [$this->store(2), $this->store(3)]);
+        $this->assertSame([
+            ['page', [1], 2],
+            ['page', [1, 3], 3],
+            ['page', [5], 2],
+            ['page', [5], 3],
+        ], $calls);
+    }
+
+    public function testNoBlockTextIsReadWhenNoPageIsVisible(): void
+    {
+        $this->blockText->expects($this->never())->method('forHosts');
+        $this->indexer()->reindex([4, 99], [$this->store(2)]);
+    }
+
+    public function testAFullRebuildAlsoCarriesTheBlockText(): void
+    {
+        $this->blockText->method('forHosts')->willReturn([1 => new HostEnrichment('Rebuilt block', [5])]);
+        $texts = [];
+        $this->indexManager = $this->createMock(IndexManager::class);
+        $this->indexManager->method('bulk')->willReturnCallback(function (string $target, array $operations) use (&$texts): void {
+            foreach ($operations as $operation) {
+                $texts[$operation['id']] = [$operation['document']['text'], $operation['document']['segment_ids']];
+            }
+        });
+        $this->indexer()->reindex([1], [$this->store(2)], [2 => self::ALIAS . '2_v8']);
+        $this->assertSame(['page_1' => ['x Rebuilt block', [5]]], $texts);
+    }
+
+    public function testAStoreViewWhoseAliasFailedReadsNoBlockText(): void
+    {
+        $this->indexManager = $this->createMock(IndexManager::class);
+        $this->indexManager->method('ensureAlias')->willReturnCallback(static function (StoreContext $store): string {
+            if ($store->getStoreId() === 3) {
+                throw new IndexingException('alias failed');
+            }
+            return 'alias_' . $store->getStoreId();
+        });
+        $stores = [];
+        $this->blockText->method('forHosts')->willReturnCallback(function (string $type, array $ids, int $storeId) use (&$stores): array {
+            $stores[] = $storeId;
+            return [];
+        });
+        try {
+            $this->indexer()->reindex([1], [$this->store(2), $this->store(3)]);
+            $this->fail('an IndexingException was expected');
+        } catch (IndexingException) {
+        }
+        $this->assertSame([2], $stores);
     }
 
     public function testNothingToDoMeansNoReadAndNoWrite(): void

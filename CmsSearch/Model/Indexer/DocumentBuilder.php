@@ -10,6 +10,7 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\PageSnapshot;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\PreparedContent;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\TermState;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
 
 /**
  * The search document of a visible CMS page in one store view (spec 4.1 / engineering 3.4). Its _id is
@@ -19,6 +20,12 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\TermState;
  * ONCE per page, lazily on the first store view where the page is visible, and NOT AT ALL when the page is invisible
  * in every store view (nothing to extract for a document that will be deleted); then pass the same PreparedContent
  * to build() for every store view of that page (build() refuses the content of another page).
+ *
+ * The text includes the blocks the page publishes (Plan 6, HostEnrichment, per store view: block visibility is
+ * store-scoped); blocks never get a document of their own (D2). Order: content heading, page text, block text; the
+ * MAX_TEXT_LENGTH cap applies to the whole, so block text is cut first and the page text is never displaced. The
+ * enrichment adds no field (the strict mapping v1 is unchanged): segment_ids carries the segment ids of the excluded
+ * segment-restricted Dynamic Blocks (D7).
  *
  * text and summary are plain text, not HTML: the consumer of the index (Plan 5) must escape them on output.
  */
@@ -63,6 +70,7 @@ class DocumentBuilder
 
     /**
      * @param PreparedContent $prepared result of prepare() for THIS page
+     * @param HostEnrichment|null $enrichment text and excluded segment ids of the blocks the page publishes in $store
      * @return array<string, mixed> exactly the fields of the strict mapping
      * @throws \LogicException when $prepared belongs to another page
      */
@@ -71,7 +79,8 @@ class DocumentBuilder
         ContentTypeState $type,
         TermState $term,
         StoreContext $store,
-        PreparedContent $prepared
+        PreparedContent $prepared,
+        ?HostEnrichment $enrichment = null
     ): array {
         if ($prepared->getPageId() !== $page->getPageId()) {
             throw new \LogicException(sprintf(
@@ -79,6 +88,23 @@ class DocumentBuilder
                 $prepared->getPageId(),
                 $page->getPageId()
             ));
+        }
+        $text = $prepared->getText();
+        $summary = $prepared->getSummary();
+        $blockText = trim($enrichment?->getText() ?? '');
+        if ($blockText !== '') {
+            // page text first (already bounded), then the block text of this store view; the cap cuts block text
+            $joined = $text === '' ? $blockText : $text . ' ' . $blockText;
+            $bounded = $this->bound($joined);
+            if ($enrichment->isTruncated() || $bounded !== $joined) {
+                // Ids only: never content.
+                $this->logger->warning(
+                    'CMS page block text truncated for indexing',
+                    ['page_id' => $page->getPageId(), 'store_id' => $store->getStoreId()]
+                );
+            }
+            $text = $bounded;
+            $summary = $this->summary($page->getMetaDescription(), $text);
         }
         return [
             'entity_type' => self::ENTITY_TYPE,
@@ -89,13 +115,13 @@ class DocumentBuilder
             'classification_ancestor_ids' => $term->getAncestorIds(),
             'classification_path' => $term->getPath(),
             'title' => $page->getTitle(),
-            'text' => $prepared->getText(),
-            'summary' => $prepared->getSummary(),
+            'text' => $text,
+            'summary' => $summary,
             'url' => $this->url($page->getIdentifier(), $store),
             'image' => $this->image($prepared->getFirstImage(), $store),
             'store_view_id' => $store->getStoreId(),
             'website_id' => $store->getWebsiteId(),
-            'segment_ids' => [],
+            'segment_ids' => $enrichment?->getSegmentIds() ?? [], // D7: excluded Dynamic Blocks
             'updated_at' => $this->updatedAt($page->getUpdateTime()),
         ];
     }
@@ -116,7 +142,11 @@ class DocumentBuilder
         return rtrim($cut);
     }
 
-    private function summary(string $metaDescription, string $text): string
+    /**
+     * Plain-text summary: the meta description when it has text, else the start of $text (also used by the category
+     * documents).
+     */
+    public function summary(string $metaDescription, string $text): string
     {
         $meta = preg_replace('/\{\{.*?\}\}/s', ' ', $metaDescription) ?? '';
         // Strip, decode, strip again: an entity-encoded tag (&lt;b&gt;) must not survive as markup.

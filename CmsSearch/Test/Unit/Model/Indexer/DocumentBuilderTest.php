@@ -14,6 +14,7 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\TermState;
 use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
 use Thedevkitchen\CmsSearch\Model\Indexer\IndexDefinition;
 use Thedevkitchen\CmsSearch\Model\Indexer\TextExtractor;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
 
 class DocumentBuilderTest extends TestCase
 {
@@ -43,6 +44,128 @@ class DocumentBuilderTest extends TestCase
     private function build(PageSnapshot $page): array
     {
         return $this->buildWith($page, new ContentTypeState(3, 'news', true), new TermState(9, 2, '1/4/9', [1, 4, 9], true), $this->store());
+    }
+
+    /** @return array<string, mixed> */
+    private function enriched(PageSnapshot $page, ?HostEnrichment $enrichment, ?DocumentBuilder $builder = null): array
+    {
+        $builder ??= $this->builder();
+        return $builder->build(
+            $page,
+            new ContentTypeState(3, 'news', true),
+            new TermState(9, 2, '1/4/9', [1, 4, 9], true),
+            $this->store(),
+            $builder->prepare($page),
+            $enrichment
+        );
+    }
+
+    private function recordingLogger(): AbstractLogger
+    {
+        return new class() extends AbstractLogger {
+            /** @var list<array{0: string, 1: string, 2: array<mixed>}> */
+            public array $records = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->records[] = [(string) $level, (string) $message, $context];
+            }
+        };
+    }
+
+    public function testPublishedBlockTextFollowsThePageTextAndSegmentsAreStored(): void
+    {
+        $document = $this->enriched(
+            $this->page('<p>Page body.</p>', 'news/offers', '', 'Welcome'),
+            new HostEnrichment('Promo strip. Seasonal banner.', [2, 4])
+        );
+        $this->assertSame('Welcome Page body. Promo strip. Seasonal banner.', $document['text']);
+        $this->assertSame('Welcome Page body. Promo strip. Seasonal banner.', $document['summary']);
+        $this->assertSame([2, 4], $document['segment_ids']);
+        $this->assertSame('page', $document['entity_type'], 'blocks never become documents of their own (D2)');
+        $this->assertSame('page_5', DocumentBuilder::documentId($document['entity_id']));
+        $mapped = array_keys((new IndexDefinition())->build($this->store())['mappings']['properties']);
+        $built = array_keys($document);
+        sort($mapped);
+        sort($built);
+        $this->assertSame($mapped, $built, 'the enrichment adds no field: the strict mapping v1 is unchanged');
+    }
+
+    public function testAnEmptyEnrichmentChangesNothing(): void
+    {
+        $page = $this->page('<p>Page body.</p>', 'news/offers', 'Meta.', 'Welcome');
+        $plain = $this->build($page);
+        $this->assertSame($plain, $this->enriched($page, new HostEnrichment('', [])));
+        $this->assertSame($plain, $this->enriched($page, null));
+        $this->assertSame([], $plain['segment_ids']);
+    }
+
+    public function testSegmentIdsAloneAddNoText(): void
+    {
+        $document = $this->enriched($this->page('<p>Page body.</p>'), new HostEnrichment('', [6, 9]));
+        $this->assertSame('Page body.', $document['text']);
+        $this->assertSame([6, 9], $document['segment_ids']);
+    }
+
+    public function testAPageWithoutTextGetsTheBlockTextWithoutALeadingSpace(): void
+    {
+        $document = $this->enriched($this->page('<div></div>'), new HostEnrichment('Only block words.', []));
+        $this->assertSame('Only block words.', $document['text']);
+        $this->assertSame('Only block words.', $document['summary']);
+    }
+
+    public function testTheMetaDescriptionStaysTheSummaryWithBlockText(): void
+    {
+        $document = $this->enriched($this->page('<p>Body.</p>', 'x', 'Meta words.'), new HostEnrichment('Block words.', []));
+        $this->assertSame('Meta words.', $document['summary']);
+        $this->assertSame('Body. Block words.', $document['text']);
+    }
+
+    public function testTheCapCutsTheBlockTextAndKeepsThePageText(): void
+    {
+        $pageText = trim(str_repeat('page ', 13000)); // 64 999 characters
+        $logger = $this->recordingLogger();
+        $document = $this->enriched(
+            $this->page('<p>' . $pageText . '</p>'),
+            new HostEnrichment(trim(str_repeat('blockword ', 300)), [3]),
+            $this->builder($logger)
+        );
+        $this->assertSame(mb_strlen($pageText), mb_strpos($document['text'], ' blockword'), 'the page text comes first, whole');
+        $this->assertTrue(str_starts_with($document['text'], $pageText), 'the page text is kept whole');
+        $this->assertLessThanOrEqual(DocumentBuilder::MAX_TEXT_LENGTH, mb_strlen($document['text']));
+        $this->assertGreaterThan(DocumentBuilder::MAX_TEXT_LENGTH - 16, mb_strlen($document['text']));
+        $this->assertSame(' blockword', mb_substr($document['text'], -10), 'cut at a word boundary of the block text');
+        $this->assertSame([3], $document['segment_ids']);
+        $this->assertCount(1, $logger->records, 'the cut is logged');
+        $this->assertSame(['page_id' => 5, 'store_id' => 2], $logger->records[0][2]);
+        $this->assertStringNotContainsString('blockword', json_encode($logger->records));
+    }
+
+    public function testAPageTextAtTheCapLeavesNoRoomForBlockText(): void
+    {
+        $document = $this->enriched(
+            $this->page('<p>' . str_repeat('a', 70000) . '</p>'),
+            new HostEnrichment('UNIQUEBLOCKWORD', [])
+        );
+        $this->assertSame(DocumentBuilder::MAX_TEXT_LENGTH, mb_strlen($document['text']));
+        $this->assertFalse(str_contains($document['text'], 'UNIQUEBLOCKWORD'), 'no room left for block text');
+    }
+
+    public function testABlockTextTruncatedByTheResolverIsLogged(): void
+    {
+        $logger = $this->recordingLogger();
+        $this->enriched($this->page('<p>Body.</p>'), new HostEnrichment('Block words.', [], true), $this->builder($logger));
+        $this->assertCount(1, $logger->records);
+        $this->assertSame(['page_id' => 5, 'store_id' => 2], $logger->records[0][2]);
+        $quiet = $this->recordingLogger();
+        $this->enriched($this->page('<p>Body.</p>'), new HostEnrichment('Block words.', []), $this->builder($quiet));
+        $this->assertSame([], $quiet->records);
+    }
+
+    public function testTheSummaryIsPublicForOtherDocumentBuilders(): void
+    {
+        $this->assertSame('Meta.', $this->builder()->summary('Meta.', 'Text.'));
+        $this->assertSame('Text.', $this->builder()->summary('', 'Text.'));
     }
 
     public function testTheDocumentHasEveryMappedFieldFromTheCurrentState(): void
