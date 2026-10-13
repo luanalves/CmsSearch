@@ -20,7 +20,8 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\WidgetInstance;
  * BlockReader call per level for the whole batch), up to MAX_DEPTH; every (host, reference, source) is recorded once,
  * which also stops cycles. Hidden or missing blocks keep their structural row (so creating, renaming or re-activating
  * them finds the host) but are not followed; segment-restricted Dynamic Blocks record their segment ids and are not
- * followed (D7). Writes only the graph table (ReferenceStore): no message is published, no indexer is called.
+ * followed (D7); Dynamic Blocks linked to a price rule keep their row and are not followed either. Writes only the
+ * graph table (ReferenceStore): no message is published, no indexer is called.
  */
 class BlockReferenceResolver implements BlockReferenceResolverInterface
 {
@@ -96,7 +97,7 @@ class BlockReferenceResolver implements BlockReferenceResolverInterface
                     'depth' => $node['depth'],
                     'segment_ids' => $block !== null && $block->hasSegments() ? $this->segmentList($block->getSegmentIds()) : null,
                 ];
-                if ($block === null || $block->hasSegments() || $node['depth'] >= self::MAX_DEPTH) {
+                if ($block === null || $block->isExcluded() || $node['depth'] >= self::MAX_DEPTH) {
                     continue;
                 }
                 foreach ($this->directiveParser->parseHtml($block->getContent()) as $child) {

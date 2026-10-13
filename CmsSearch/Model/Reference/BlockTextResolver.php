@@ -13,7 +13,7 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
  * first): only blocks the store view displays (BlockReader: current version, active, store-scoped), nested blocks
  * followed up to BlockReferenceResolver::MAX_DEPTH, each block once per host (cycle-safe). Identifier references are
  * resolved again by identifier, like the storefront does. Segment-restricted Dynamic Blocks add no text in v1 but
- * report their segment ids (D7). Order: the host's references in graph order (document order of directives, then
+ * report their segment ids (D7); Dynamic Blocks linked to a cart/catalog price rule add no text either (BlockReader). Order: the host's references in graph order (document order of directives, then
  * widget placements), nested blocks breadth-first; the text per host is capped at MAX_TEXT_CHARS.
  */
 class BlockTextResolver
@@ -76,7 +76,8 @@ class BlockTextResolver
                     continue;
                 }
                 $doneBlocks[$hostId][$block->key()] = true;
-                if ($block->hasSegments()) {
+                if ($block->isExcluded()) {
+                    // visitor-dependent (D7 segments, or a price rule): no text, not followed; segment ids are kept
                     array_push($segments[$hostId], ...$block->getSegmentIds());
                     continue;
                 }

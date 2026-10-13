@@ -35,7 +35,7 @@ trait DbStubTrait
     private function db(array $fetchAll = [], array $fetchCol = [], array $fetchPairs = []): ResourceConnection
     {
         $select = $this->createMock(Select::class);
-        foreach (['columns', 'distinct', 'limit', 'group'] as $method) {
+        foreach (['columns', 'distinct', 'limit', 'group', 'union'] as $method) {
             $select->method($method)->willReturnSelf();
         }
         $select->method('order')->willReturnCallback(function ($spec) use ($select) {

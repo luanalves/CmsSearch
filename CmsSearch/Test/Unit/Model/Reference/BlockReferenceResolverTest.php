@@ -189,6 +189,14 @@ class BlockReferenceResolverTest extends TestCase
         $this->assertSame(['10 dynamic_block 3 - content 0 0 4,7'], $this->rows());
     }
 
+    public function testARuleRestrictedDynamicBlockKeepsItsRowAndIsNotFollowed(): void
+    {
+        $this->hosts->method('read')->willReturn([10 => self::page(10, '{{widget type="Magento\Banner\Block\Widget\Banner" banner_ids="3"}}')]);
+        $this->blocksFrom(['dynamic_block#3' => new BlockSource('dynamic_block', 3, '', '{{block id="x"}}', [], true)], 1);
+        $this->resolver()->refreshForHosts('page', [10], 2);
+        $this->assertSame(['10 dynamic_block 3 - content 0 0 -'], $this->rows());
+    }
+
     public function testAnUnrestrictedDynamicBlockIsFollowed(): void
     {
         $this->hosts->method('read')->willReturn([10 => self::page(10, '{{widget type="Magento\Banner\Block\Widget\Banner" banner_ids="3"}}')]);

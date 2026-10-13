@@ -90,7 +90,7 @@ class BlockReaderTest extends TestCase
                 ['banner_id' => 3, 'store_id' => 0, 'banner_content' => '<p>default of three</p>'],
             ],
             [['banner_id' => 7, 'segment_id' => 4], ['banner_id' => 7, 'segment_id' => 2], ['banner_id' => 7, 'segment_id' => 4]],
-        ]))->read([new BlockRef('dynamic_block', 3), new BlockRef('dynamic_block', 7)], 2);
+        ], [[]]))->read([new BlockRef('dynamic_block', 3), new BlockRef('dynamic_block', 7)], 2);
         $this->assertSame(['dynamic_block#3', 'dynamic_block#7'], array_keys($sources));
         $this->assertSame('<p>store two</p>', $sources['dynamic_block#3']->getContent());
         $this->assertFalse($sources['dynamic_block#3']->hasSegments());
@@ -99,8 +99,11 @@ class BlockReaderTest extends TestCase
         $this->assertSame([[3, 7]], $this->whereValues('b.banner_id IN (?)'));
         $this->assertSame([1], $this->whereValues('b.is_enabled = ?'));
         $this->assertSame([[0, 2]], $this->whereValues('c.store_id IN (?)'));
-        $this->assertSame([[3, 7]], $this->whereValues('banner_id IN (?)'));
+        $this->assertSame([[3, 7], [3, 7], [3, 7]], $this->whereValues('banner_id IN (?)'), 'segments, sales rules, catalog rules');
         $this->assertSame(['c.store_id DESC'], $this->orders);
+        $this->assertFalse($sources['dynamic_block#3']->isRuleRestricted());
+        $this->assertFalse($sources['dynamic_block#3']->isExcluded());
+        $this->assertTrue($sources['dynamic_block#7']->isExcluded());
     }
 
     public function testAnEmptyStoreContentShowsNothingAndSkipsTheSegmentQuery(): void
@@ -171,14 +174,50 @@ class BlockReaderTest extends TestCase
             [['banner_id' => 3, 'store_id' => 0, 'banner_content' => 'z']],
             [['banner_id' => 2, 'segment_id' => 9]],
             [],
-        ]), 2)->read([
+        ], [[], [3]]), 2)->read([
             new BlockRef('dynamic_block', 1), new BlockRef('dynamic_block', 2), new BlockRef('dynamic_block', 3),
         ], 2);
         $this->assertSame(['dynamic_block#1', 'dynamic_block#2', 'dynamic_block#3'], array_keys($sources));
         $this->assertTrue($sources['dynamic_block#2']->hasSegments());
         $this->assertFalse($sources['dynamic_block#3']->hasSegments());
         $this->assertSame([[1, 2], [3]], $this->whereValues('b.banner_id IN (?)'));
-        $this->assertSame([[1, 2], [3]], $this->whereValues('banner_id IN (?)'));
+        $this->assertSame([[1, 2], [1, 2], [1, 2], [3], [3], [3]], $this->whereValues('banner_id IN (?)'));
+        $this->assertTrue($sources['dynamic_block#3']->isRuleRestricted(), 'the rule query is chunked too');
+        $this->assertFalse($sources['dynamic_block#1']->isRuleRestricted());
+    }
+
+    public function testDynamicBlocksLinkedToACartOrCatalogPriceRuleAreRuleRestricted(): void
+    {
+        // Magento\Banner\Model\Banner\Data::getFixedBanners shows such a banner only when the rule applies to the
+        // visitor (getBannerIdsBySalesRules / getBannerIdsByCatalogRules): visitor-dependent, may show coupon codes
+        $sources = $this->reader($this->db([
+            [
+                ['banner_id' => 3, 'store_id' => 0, 'banner_content' => 'a'],
+                ['banner_id' => 5, 'store_id' => 0, 'banner_content' => 'b'],
+                ['banner_id' => 7, 'store_id' => 0, 'banner_content' => 'c'],
+            ],
+            [],
+        ], [['5', '7', '5']]))->read([new BlockRef('dynamic_block', 3), new BlockRef('dynamic_block', 5), new BlockRef('dynamic_block', 7)], 2);
+        $this->assertSame([false, true, true], [
+            $sources['dynamic_block#3']->isRuleRestricted(),
+            $sources['dynamic_block#5']->isRuleRestricted(),
+            $sources['dynamic_block#7']->isRuleRestricted(),
+        ]);
+        $this->assertSame([false, true, true], [
+            $sources['dynamic_block#3']->isExcluded(),
+            $sources['dynamic_block#5']->isExcluded(),
+            $sources['dynamic_block#7']->isExcluded(),
+        ]);
+        $this->assertFalse($sources['dynamic_block#5']->hasSegments(), 'no segment ids are invented');
+        $this->assertContains('magento_banner_salesrule', $this->tables);
+        $this->assertContains('magento_banner_catalogrule', $this->tables);
+    }
+
+    public function testBlockSourceExclusion(): void
+    {
+        $this->assertFalse((new BlockSource('dynamic_block', 3, '', 'x'))->isExcluded());
+        $this->assertTrue((new BlockSource('dynamic_block', 3, '', 'x', [1]))->isExcluded());
+        $this->assertTrue((new BlockSource('dynamic_block', 3, '', 'x', [], true))->isExcluded());
     }
 
     public function testBlockSourceKey(): void

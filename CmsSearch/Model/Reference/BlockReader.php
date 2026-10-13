@@ -17,7 +17,10 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockSource;
  * - CMS block (Magento\Cms\Model\ResourceModel\Block::_getLoadSelect with a store): active, assigned to the store view
  *   or to All Store Views, the store view's own block first; numeric values by block_id, others by identifier;
  * - Dynamic Block (Magento\Banner\Model\ResourceModel\Banner::getStoreContent): enabled, content of the store view
- *   else of All Store Views, empty content shows nothing; its customer segments are attached (D7).
+ *   else of All Store Views, empty content shows nothing; its customer segments are attached (D7), and a banner linked
+ *   to a cart or catalog price rule is flagged rule-restricted: Magento\Banner\Model\Banner\Data::getFixedBanners()
+ *   shows it only when the rule applies to the visitor, so it is excluded like a segment-restricted one (beyond the
+ *   literal D7: visitor-dependent content that may carry coupon codes).
  * cms_block is a staged table: the Staging select renderer adds the current-version filter to every select on it, so
  * a scheduled version is never read before it starts. The renderer compares against the Staging version cached in
  * VersionHistory, which a long-lived consumer would keep forever: it is reloaded before every read of cms_block.
@@ -149,7 +152,7 @@ class BlockReader
 
     /**
      * @param array<int, string> $contents banner id => content
-     * @return list<BlockSource> every Dynamic Block with the customer segments that restrict it (D7)
+     * @return list<BlockSource> every Dynamic Block with the customer segments that restrict it (D7) and its rule flag
      */
     private function dynamicBlocks(array $contents): array
     {
@@ -158,6 +161,7 @@ class BlockReader
         }
         $connection = $this->resource->getConnection();
         $segments = [];
+        $ruleLinked = [];
         foreach ($this->chunks(array_keys($contents)) as $chunk) {
             $links = $connection->fetchAll(
                 $connection->select()
@@ -167,12 +171,33 @@ class BlockReader
             foreach ($links as $link) {
                 $segments[(int) $link['banner_id']][(int) $link['segment_id']] = true;
             }
+            // one query for both rule link tables (UNION), per chunk
+            $ruled = $connection->fetchCol(
+                $connection->select()->union([
+                    $connection->select()
+                        ->from($this->resource->getTableName('magento_banner_salesrule'), ['banner_id'])
+                        ->where('banner_id IN (?)', $chunk),
+                    $connection->select()
+                        ->from($this->resource->getTableName('magento_banner_catalogrule'), ['banner_id'])
+                        ->where('banner_id IN (?)', $chunk),
+                ])
+            );
+            foreach ($ruled as $bannerId) {
+                $ruleLinked[(int) $bannerId] = true;
+            }
         }
         $sources = [];
         foreach ($contents as $bannerId => $content) {
             $segmentIds = array_keys($segments[$bannerId] ?? []);
             sort($segmentIds);
-            $sources[] = new BlockSource(BlockRef::KIND_DYNAMIC_BLOCK, $bannerId, '', $content, $segmentIds);
+            $sources[] = new BlockSource(
+                BlockRef::KIND_DYNAMIC_BLOCK,
+                $bannerId,
+                '',
+                $content,
+                $segmentIds,
+                isset($ruleLinked[$bannerId])
+            );
         }
         return $sources;
     }

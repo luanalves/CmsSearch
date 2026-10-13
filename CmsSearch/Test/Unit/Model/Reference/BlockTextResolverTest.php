@@ -95,6 +95,18 @@ class BlockTextResolverTest extends TestCase
         $this->assertSame([10 => ['Public', [2, 4]]], self::texts($this->resolver()->forHosts('page', [10], 2)));
     }
 
+    public function testRuleRestrictedDynamicBlocksAddNoTextAndAreNotFollowed(): void
+    {
+        $this->store->method('directRefs')->willReturn([10 => [self::ref('dynamic_block', 3), self::ref('block', 1)]]);
+        $this->blocksFrom([
+            'dynamic_block#3' => new BlockSource('dynamic_block', 3, '', '<p>COUPON10</p>{{block id="9"}}', [], true),
+            'block#9' => new BlockSource('block', 9, 'n', '<p>Nested promo</p>'),
+            'block#1' => new BlockSource('block', 1, 'a', '<p>Public</p>'),
+        ]);
+        $this->assertSame([10 => ['Public', []]], self::texts($this->resolver()->forHosts('page', [10], 2)));
+        $this->assertSame([['dynamic_block#3', 'block#1']], $this->reads, 'children of an excluded block are not read');
+    }
+
     public function testNestedBlocksAreFollowed(): void
     {
         $this->store->method('directRefs')->willReturn([10 => [self::ref('block', 1)]]);
