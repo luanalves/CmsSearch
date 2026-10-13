@@ -124,6 +124,11 @@
         <plugin name="thedevkitchen_cmssearch_publish_product_reindex"
                 type="Thedevkitchen\CmsSearch\Plugin\Catalog\PublishProductMassActionReindex"/>
     </type>
+    <!-- Plan 6: the permission index is written after Category::save commits; global scope (cron / CLI run the indexer). -->
+    <type name="Magento\CatalogPermissions\Model\Indexer\Category">
+        <plugin name="thedevkitchen_cmssearch_publish_category_permission_reindex"
+                type="Thedevkitchen\CmsSearch\Plugin\CatalogPermissions\PublishCategoryPermissionReindex"/>
+    </type>
     <type name="Magento\Staging\Model\StagingApplier">
         <arguments>
             <argument name="postProcessors" xsi:type="array">

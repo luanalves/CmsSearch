@@ -17,7 +17,7 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
  * deleting the first one's unfinished version at its swap):
  *   1. a new index version is created with the current strict mapping (IndexManager::createIndex);
  *   2. every page id is streamed in keyset batches through PageIndexer in full mode (visible pages only, written
- *      through the version's build alias, no refresh per request), then every category id (level >= 2) through
+ *      through the version's build alias, no refresh per request), then every category id below the store view's root category through
  *      CategoryIndexer the same way (Plan 6: category documents share the index, so the alias switch would drop them
  *      otherwise); the reference graph of every page and category batch is refreshed before it is indexed;
  *   3. the version is refreshed ONCE (REFRESH DECISION), then the alias is moved to it in one atomic _aliases call
@@ -153,7 +153,7 @@ class FullReindexer
             $read = 0;
             $lastId = 0;
             do {
-                $categoryIds = $this->catalogIdSource->nextCategoryIds($lastId, $this->batchSize);
+                $categoryIds = $this->catalogIdSource->nextCategoryIds($lastId, $this->batchSize, $storeId);
                 if ($categoryIds !== []) {
                     $this->referenceResolver->refreshForHosts(HostType::CATEGORY, $categoryIds, $storeId);
                     $categories += $this->categoryIndexer->reindex($categoryIds, [$store], [$storeId => $index])['upserted'];

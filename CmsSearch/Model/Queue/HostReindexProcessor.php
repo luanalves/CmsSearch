@@ -19,7 +19,10 @@ use Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts;
  * - Store views: the message store view (set only by the reindex command) or every store view, restricted to the
  *   message website when it has one (terms: their pages are only visible in the store views of that website).
  *   Without any concerned store view the hosts are not even read.
- * - Hosts are processed chunk by chunk as AffectedHosts streams them (memory bounded by a chunk).
+ * - Hosts are processed chunk by chunk as AffectedHosts streams them, but only for page, category and product messages
+ *   (keyset paging). Block and widget instance messages are NOT bounded: AffectedHosts::ofBlock / ofWidgetInstance
+ *   return the whole host list in ONE chunk, so a block or widget placed on all_products / <type>_products loads every
+ *   host triple in memory and runs in one message (see the README known limits: consumer_timeout, ~100k products).
  * - A missing entity or store view is a success (its rows/documents are removed or never existed).
  *   InvalidReindexMessageException (unsupported entity type, from AffectedHosts) is permanent; every other exception
  *   propagates unchanged and is retried by ReindexHandler (the work is idempotent).

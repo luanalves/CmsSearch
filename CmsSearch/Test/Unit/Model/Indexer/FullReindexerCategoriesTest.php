@@ -23,7 +23,7 @@ class FullReindexerCategoriesTest extends TestCase
 
     /** @var list<string> */
     private array $calls = [];
-    /** @var list<array{0: int, 1: int}> */
+    /** @var list<array{0: int, 1: int, 2: int|null}> */
     private array $catalogIdCalls = [];
 
     private function reindexer(
@@ -89,8 +89,8 @@ class FullReindexerCategoriesTest extends TestCase
         });
         $catalogIds = $this->createMock(CatalogIdSource::class);
         $batches = [[37, 38], [40]];
-        $catalogIds->expects($this->exactly(2))->method('nextCategoryIds')->willReturnCallback(function (int $after, int $limit) use (&$batches): array {
-            $this->catalogIdCalls[] = [$after, $limit];
+        $catalogIds->expects($this->exactly(2))->method('nextCategoryIds')->willReturnCallback(function (int $after, int $limit, ?int $storeId = null) use (&$batches): array {
+            $this->catalogIdCalls[] = [$after, $limit, $storeId];
             return array_shift($batches);
         });
         $lines = [];
@@ -101,7 +101,7 @@ class FullReindexerCategoriesTest extends TestCase
             'Store 2: 2 categor(ies) read, 1 category document(s) written (last category id 38).',
             'Store 2: 3 categor(ies) read, 2 category document(s) written (last category id 40).',
         ], array_values(array_filter($lines, static fn (string $line): bool => str_contains($line, 'categor'))));
-        $this->assertSame([[0, 2], [38, 2]], $this->catalogIdCalls, 'keyset batches of the batch size');
+        $this->assertSame([[0, 2, 2], [38, 2, 2]], $this->catalogIdCalls, 'keyset batches of the batch size, for the store view being built');
         $this->assertSame([
             'graph page 1,2 2', 'pages 1,2 {"2":"idx_2_v2"}',
             'graph page 5 2', 'pages 5 {"2":"idx_2_v2"}',
