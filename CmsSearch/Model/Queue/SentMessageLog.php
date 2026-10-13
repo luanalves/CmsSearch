@@ -20,6 +20,8 @@ use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 class SentMessageLog implements ResetAfterRequestInterface
 {
     private bool $open = false;
+    /** Nesting of enter()/leave(): only the outermost leave() closes the log. */
+    private int $depth = 0;
     /** @var array<string, true> "<entity_type>#<entity_id>" */
     private array $sent = [];
 
@@ -27,6 +29,24 @@ class SentMessageLog implements ResetAfterRequestInterface
     {
         $this->open = true;
         $this->sent = [];
+    }
+
+    /** Start of a run; a run nested in an open one joins it (the outer log and its entries are kept). */
+    public function enter(): void
+    {
+        if ($this->depth++ === 0) {
+            $this->open();
+        }
+    }
+
+    /** End of a run; only the outermost one closes and empties the log. */
+    public function leave(): void
+    {
+        if ($this->depth > 0 && --$this->depth > 0) {
+            return;
+        }
+        $this->depth = 0;
+        $this->close();
     }
 
     public function close(): void
@@ -50,6 +70,7 @@ class SentMessageLog implements ResetAfterRequestInterface
 
     public function _resetState(): void
     {
+        $this->depth = 0;
         $this->close();
     }
 }

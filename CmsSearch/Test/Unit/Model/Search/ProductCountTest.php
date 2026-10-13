@@ -151,4 +151,21 @@ class ProductCountTest extends TestCase
         $other->expects($this->once())->method('renderElement')->willReturn('<div></div>');
         $this->assertSame(74, $counter->count($other, true));
     }
+
+    public function testEachTabKindHasItsOwnMemoWithinOneLayout(): void
+    {
+        $block = $this->createMock(Result::class);
+        $block->method('getData')->with('result_count')->willReturn(74);
+        $layout = $this->layout($block);
+        $layout->method('renderElement')->willReturn('<div></div>');
+        $collection = $this->createMock(Collection::class);
+        $collection->method('getSize')->willReturn(42);
+        $layer = $this->createMock(Layer::class);
+        $layer->method('getProductCollection')->willReturn($collection);
+        $this->layers->method('get')->willReturn($layer);
+        $counter = new ProductCount($this->layers, $this->logger);
+        $this->assertSame(74, $counter->count($layout, true));
+        $this->assertSame(42, $counter->count($layout, false), 'the CMS tab must not reuse the Products tab count');
+        $this->assertSame(74, $counter->count($layout, true));
+    }
 }

@@ -57,7 +57,10 @@ class SearchState implements ResetAfterRequestInterface
     ) {
     }
 
-    /** Long-running workers (application server, GraphQL) reuse the shared instance: forget this request's decision. */
+    /**
+     * Forgets this request's decision. Defensive: ResetAfterRequestInterface is only invoked by Magento_ApplicationServer's
+     * Resetter; php-fpm and queue consumers never call it (php-fpm starts clean per request). Do not rely on it for hygiene.
+     */
     public function _resetState(): void
     {
         $this->resolved = false;

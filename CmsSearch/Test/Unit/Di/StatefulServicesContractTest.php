@@ -8,10 +8,11 @@ use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Shared services keep state across requests in long-running PHP workers (Magento application server, GraphQL) and
- * across messages in the reindex consumer. Every module class with mutable instance state either resets it between
- * requests (ResetAfterRequestInterface, every property back to its declared default) or is allowed to keep it, with
- * the reason. A NEW stateful class fails this test until that decision is made.
+ * Shared services keep state for the life of the process. ResetAfterRequestInterface is invoked ONLY by
+ * Magento_ApplicationServer's Resetter: php-fpm (fresh process state per request) and the queue consumers do NOT call
+ * it, so these resets are defensive and must not be relied on for consumer hygiene (consumers clear what they need
+ * themselves). Every module class with mutable instance state either offers the reset (every property back to its
+ * declared default) or is allowed to keep it, with the reason. A NEW stateful class fails this test until that decision is made.
  */
 class StatefulServicesContractTest extends TestCase
 {

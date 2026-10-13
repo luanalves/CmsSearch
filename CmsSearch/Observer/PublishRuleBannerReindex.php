@@ -21,8 +21,11 @@ use Thedevkitchen\CmsSearch\Api\ReindexPublisherInterface;
  * link may have changed:
  * - <prefix>_save_before / _delete_before: the banner ids linked in the database BEFORE the write are remembered per
  *   rule (an existing rule only);
- * - <prefix>_save_after: those, plus the banners the rule carries (related_banners, when the admin grid sent them),
- *   plus the links in the database now (whatever the observer order with Magento_Banner);
+ * - <prefix>_save_after: only the SYMMETRIC DIFFERENCE between the remembered set and the after-set (banners linked or
+ *   unlinked by this write). After-set = related_banners when it is an array (what Magento_Banner binds, whatever the
+ *   observer order), otherwise the links in the database now. A new rule has nothing remembered, so every linked
+ *   banner is new. A save that changes no link (coupon usage counters via SalesRule Usage Processor, Staging
+ *   re-saves) publishes nothing;
  * - <prefix>_delete_after: the remembered ones (the links went with the rule).
  * Prefixes: salesrule_rule (cart price rules), catalogrule_rule (catalog price rules); both rule models are written
  * through the EntityManager, whose bridge dispatches these model events inside the transaction, so the publisher
@@ -59,36 +62,48 @@ class PublishRuleBannerReindex implements ObserverInterface, ResetAfterRequestIn
         }
         $ruleId = (int) $rule->getId();
         $phase = substr($name, strlen($prefix) + 1);
-        try {
-            switch ($phase) {
-                case 'save_before':
-                case 'delete_before':
-                    if ($ruleId > 0) {
-                        $this->before[$prefix . '#' . $ruleId] = $this->linked($prefix, $ruleId);
+        switch ($phase) {
+            case 'save_before':
+            case 'delete_before':
+                if ($ruleId > 0) {
+                    // An entry whose *_after never comes (failed write) stays until the request ends: bounded by the
+                    // number of rules written in the request and harmless (a later write of the rule overwrites it).
+                    $this->before[$prefix . '#' . $ruleId] = $this->lookup($prefix, $ruleId, 'remembered');
+                }
+                return;
+            case 'save_after':
+                $remembered = $this->take($prefix, $ruleId);
+                $related = $rule->getData('related_banners');
+                if (is_array($related)) {
+                    $after = self::ids($related);
+                } elseif ($ruleId > 0) {
+                    $after = $this->lookup($prefix, $ruleId, 'current');
+                    if ($after === null) {
+                        // cannot diff: ask for every banner known to be linked before the write
+                        $this->publishAll($remembered);
+                        return;
                     }
-                    return;
-                case 'save_after':
-                    $ids = array_merge(
-                        $this->take($prefix, $ruleId),
-                        self::ids($rule->getData('related_banners')),
-                        $ruleId > 0 ? $this->linked($prefix, $ruleId) : []
-                    );
-                    break;
-                case 'delete_after':
-                    $ids = $this->take($prefix, $ruleId);
-                    break;
-                default:
-                    return;
-            }
-        } catch (\Throwable $exception) {
-            $this->logger->error(sprintf(
-                'Dynamic Blocks of %s %d not looked up: %s',
-                $prefix,
-                $ruleId,
-                get_class($exception)
-            ));
-            return;
+                } else {
+                    $after = [];
+                }
+                // Only a link that appeared or disappeared changes a banner's index text; a rule re-saved with the same
+                // links (coupon usage counters, Staging re-saves) publishes nothing.
+                $ids = array_merge(array_diff($remembered, $after), array_diff($after, $remembered));
+                break;
+            case 'delete_after':
+                $ids = $this->take($prefix, $ruleId);
+                break;
+            default:
+                return;
         }
+        $this->publishAll($ids);
+    }
+
+    /**
+     * @param list<int> $ids
+     */
+    private function publishAll(array $ids): void
+    {
         foreach (array_values(array_unique($ids)) as $bannerId) {
             $this->publisher->publish(
                 ReindexMessageInterface::ENTITY_DYNAMIC_BLOCK,
@@ -101,6 +116,28 @@ class PublishRuleBannerReindex implements ObserverInterface, ResetAfterRequestIn
     public function _resetState(): void
     {
         $this->before = [];
+    }
+
+    /**
+     * Never throws: a failing lookup is logged (class only) and yields an empty list for the "remembered" side, null
+     * for the "current" side so the caller can still publish what it already knows.
+     *
+     * @return list<int>|null
+     */
+    private function lookup(string $prefix, int $ruleId, string $what): ?array
+    {
+        try {
+            return $this->linked($prefix, $ruleId);
+        } catch (\Throwable $exception) {
+            $this->logger->error(sprintf(
+                'Dynamic Blocks of %s %d not looked up (%s): %s',
+                $prefix,
+                $ruleId,
+                $what,
+                get_class($exception)
+            ));
+            return $what === 'current' ? null : [];
+        }
     }
 
     /**

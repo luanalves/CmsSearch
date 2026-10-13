@@ -71,13 +71,50 @@ class PublishRuleBannerReindexTest extends TestCase
         $this->assertSame(['dynamic_block 5 save'], $this->published);
     }
 
-    public function testASaveWithoutTheBannerGridStillFindsTheLinksInTheDatabase(): void
+    public function testASaveWithoutTheBannerGridPublishesOnlyWhatChangedInTheDatabase(): void
     {
-        // REST / mass actions / Staging saves carry no related_banners: the links in the database still count
+        // REST / mass actions / Staging saves carry no related_banners: the after-set comes from the database
+        $this->links['sales#5'] = [7, 8];
+        $this->fire('salesrule_rule_save_before', 5);
+        $this->links['sales#5'] = [8, 9]; // 7 unlinked, 9 linked, 8 untouched
+        $this->fire('salesrule_rule_save_after', 5);
+        $this->assertSame(['dynamic_block 7 save', 'dynamic_block 9 save'], $this->published);
+    }
+
+    public function testUnchangedLinksPublishNothing(): void
+    {
+        $this->links['sales#5'] = [7, 8];
+        $this->fire('salesrule_rule_save_before', 5);
+        $this->fire('salesrule_rule_save_after', 5, ['8', '7']);
+        $this->assertSame([], $this->published);
+    }
+
+    public function testACouponUsageStyleSaveWithoutRelatedBannersPublishesNothing(): void
+    {
+        // Usage\Processor::updateRuleUsages(): load, setTimesUsed, save - no related_banners, links untouched
         $this->links['sales#5'] = [7];
+        $this->links['catalog#5'] = [4];
         $this->fire('salesrule_rule_save_before', 5);
         $this->fire('salesrule_rule_save_after', 5);
-        $this->assertSame(['dynamic_block 7 save'], $this->published);
+        $this->fire('catalogrule_rule_save_before', 5);
+        $this->fire('catalogrule_rule_save_after', 5);
+        $this->assertSame([], $this->published);
+    }
+
+    public function testAnAddedLinkPublishesOnlyTheNewBanner(): void
+    {
+        $this->links['sales#5'] = [7];
+        $this->fire('salesrule_rule_save_before', 5);
+        $this->fire('salesrule_rule_save_after', 5, ['7', '10']);
+        $this->assertSame(['dynamic_block 10 save'], $this->published);
+    }
+
+    public function testRemovingEveryLinkPublishesTheRemovedBanners(): void
+    {
+        $this->links['sales#5'] = [7, 8];
+        $this->fire('salesrule_rule_save_before', 5);
+        $this->fire('salesrule_rule_save_after', 5, []);
+        $this->assertSame(['dynamic_block 7 save', 'dynamic_block 8 save'], $this->published);
     }
 
     public function testTheBannersTheRuleCarriesCountEvenBeforeMagentoBannerBindsThem(): void
@@ -133,7 +170,37 @@ class PublishRuleBannerReindexTest extends TestCase
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())->method('error')->with($this->stringContains('RuntimeException'));
         $observer = $this->observerWith($banners, $logger);
-        $this->fire('salesrule_rule_save_after', 5, ['4'], $observer);
+        $this->fire('salesrule_rule_save_after', 5, null, $observer);
         $this->assertSame([], $this->published);
+    }
+
+    public function testAFailingBeforeLookupIsLoggedAndTheAfterSetIsPublished(): void
+    {
+        $banners = $this->createMock(BannerResource::class);
+        $banners->method('getRelatedBannersBySalesRuleId')->willThrowException(new \RuntimeException('deadlock'));
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())->method('error')->with($this->stringContains('RuntimeException'));
+        $observer = $this->observerWith($banners, $logger);
+        $this->fire('salesrule_rule_save_before', 5, null, $observer);
+        $this->fire('salesrule_rule_save_after', 5, ['4'], $observer); // array: no second lookup
+        $this->assertSame(['dynamic_block 4 save'], $this->published);
+    }
+
+    public function testAFailingNowLookupStillPublishesTheIdsAlreadyCollected(): void
+    {
+        $calls = 0;
+        $banners = $this->createMock(BannerResource::class);
+        $banners->method('getRelatedBannersBySalesRuleId')->willReturnCallback(function () use (&$calls): array {
+            if (++$calls > 1) {
+                throw new \RuntimeException('deadlock');
+            }
+            return [3, 6];
+        });
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())->method('error')->with($this->stringContains('RuntimeException'));
+        $observer = $this->observerWith($banners, $logger);
+        $this->fire('salesrule_rule_save_before', 5, null, $observer);
+        $this->fire('salesrule_rule_save_after', 5, null, $observer);
+        $this->assertSame(['dynamic_block 3 save', 'dynamic_block 6 save'], $this->published);
     }
 }
