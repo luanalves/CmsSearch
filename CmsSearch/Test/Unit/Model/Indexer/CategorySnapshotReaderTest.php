@@ -161,8 +161,7 @@ class CategorySnapshotReaderTest extends TestCase
 
     public function testLandingPageAndTreeRules(): void
     {
-        $category = static fn (string $path, int $level, string $mode, int $landing = 5): CategorySnapshot =>
-            new CategorySnapshot(37, $path, $level, 'n', '', $landing, $mode, false, true, null, null);
+        $category = static fn (string $path, int $level, string $mode, int $landing = 5): CategorySnapshot => new CategorySnapshot(37, $path, $level, 'n', '', $landing, $mode, false, true, null, null);
         $this->assertSame(5, $category('1/2/37', 2, 'PAGE')->getLandingBlockId());
         $this->assertSame(5, $category('1/2/37', 2, 'PRODUCTS_AND_PAGE')->getLandingBlockId());
         // Catalog\Block\Category\View::isContentMode()/isMixedMode() compare with ==: case matters on the storefront
