@@ -15,12 +15,9 @@ use Thedevkitchen\CmsSearch\Model\Indexer\IndexManager;
 use Thedevkitchen\CmsSearch\Model\Indexer\PageIndexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreContextProvider;
 use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
-use Thedevkitchen\CmsSearch\Test\Unit\Support\DbStubTrait;
 
 class FullReindexerCategoriesTest extends TestCase
 {
-    use DbStubTrait;
-
     /** @var list<string> */
     private array $calls = [];
     /** @var list<array{0: int, 1: int, 2: int|null}> */
@@ -50,8 +47,8 @@ class FullReindexerCategoriesTest extends TestCase
         });
         $locks = $this->createMock(LockManagerInterface::class);
         $locks->method('lock')->willReturn(true);
+        $catalogIds->method('nextPageIds')->willReturnOnConsecutiveCalls([1, 2], [5]);
         return new FullReindexer(
-            $this->db([], [[1, 2], [5]]),
             $stores,
             $pages,
             $indexManager,

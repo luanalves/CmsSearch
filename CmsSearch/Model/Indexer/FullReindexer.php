@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\Indexer;
 
-use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Lock\LockManagerInterface;
 use Thedevkitchen\CmsSearch\Exception\IndexingException;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
@@ -16,7 +15,8 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
  * request). Per store view, under a per-store lock (a second rebuild of the same store view fails fast instead of
  * deleting the first one's unfinished version at its swap):
  *   1. a new index version is created with the current strict mapping (IndexManager::createIndex);
- *   2. every page id is streamed in keyset batches through PageIndexer in full mode (visible pages only, written
+ *   2. every page id assigned to the store view or to All Store Views is streamed in keyset batches
+ *      (CatalogIdSource::nextPageIds; pages of other store views cannot be visible here) through PageIndexer in full mode (visible pages only, written
  *      through the version's build alias, no refresh per request), then every category id below the store view's root category through
  *      CategoryIndexer the same way (Plan 6: category documents share the index, so the alias switch would drop them
  *      otherwise); the reference graph of every page and category batch is refreshed before it is indexed;
@@ -34,12 +34,9 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
  */
 class FullReindexer
 {
-    use PageIdKeysetTrait;
-
     public const LOCK_PREFIX = 'thedevkitchen_cmssearch_rebuild_';
 
     public function __construct(
-        private readonly ResourceConnection $resource,
         private readonly StoreContextProvider $storeContextProvider,
         private readonly PageIndexer $pageIndexer,
         private readonly IndexManager $indexManager,
@@ -134,7 +131,7 @@ class FullReindexer
             $read = 0;
             $lastId = 0;
             do {
-                $pageIds = $this->nextPageIds($lastId);
+                $pageIds = $this->catalogIdSource->nextPageIds($lastId, $this->batchSize, $storeId);
                 if ($pageIds !== []) {
                     $this->referenceResolver->refreshForHosts(HostType::PAGE, $pageIds, $storeId);
                     $documents += $this->pageIndexer->reindex($pageIds, [$store], [$storeId => $index])['upserted'];

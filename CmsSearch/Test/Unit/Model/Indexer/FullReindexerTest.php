@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Test\Unit\Model\Indexer;
 
-use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Lock\LockManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -14,12 +13,9 @@ use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\IndexManager;
 use Thedevkitchen\CmsSearch\Model\Indexer\PageIndexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreContextProvider;
-use Thedevkitchen\CmsSearch\Test\Unit\Support\ResourceConnectionStubTrait;
 
 class FullReindexerTest extends TestCase
 {
-    use ResourceConnectionStubTrait;
-
     private StoreContextProvider&MockObject $stores;
     private PageIndexer&MockObject $pageIndexer;
     private IndexManager&MockObject $indexManager;
@@ -28,6 +24,10 @@ class FullReindexerTest extends TestCase
     private array $calls = [];
     /** @var array<string, true> locks held by "another process" */
     private array $heldElsewhere = [];
+    /** @var list<list<int|string>> */
+    private array $pageBatches = [];
+    /** @var list<array{0: int, 1: int, 2: int}> */
+    private array $pageIdCalls = [];
 
     protected function setUp(): void
     {
@@ -64,12 +64,16 @@ class FullReindexerTest extends TestCase
         return new StoreContext($id, 2, 's' . $id, 'pt_BR', 'https://s.test/', 'https://s.test/media/', 'home');
     }
 
-    private function reindexer(ResourceConnection $resource): FullReindexer
+    private function reindexer(array $pageBatches = []): FullReindexer
     {
+        $this->pageBatches = $pageBatches;
         $catalogIds = $this->createMock(\Thedevkitchen\CmsSearch\Model\Indexer\CatalogIdSource::class);
         $catalogIds->method('nextCategoryIds')->willReturn([]);
+        $catalogIds->method('nextPageIds')->willReturnCallback(function (int $after, int $limit, int $storeId): array {
+            $this->pageIdCalls[] = [$after, $limit, $storeId];
+            return array_map('intval', array_shift($this->pageBatches) ?? []);
+        });
         return new FullReindexer(
-            $resource,
             $this->stores,
             $this->pageIndexer,
             $this->indexManager,
@@ -99,7 +103,7 @@ class FullReindexerTest extends TestCase
             $this->calls[] = 'orphans';
             return ['idx_9_v1'];
         });
-        $result = $this->reindexer($this->resourceReturning([], [['1', '2'], ['3'], ['1', '2'], ['3']]))->rebuild();
+        $result = $this->reindexer([['1', '2'], ['3'], ['1', '2'], ['3']])->rebuild();
         $lock = 'lock thedevkitchen_cmssearch_rebuild_';
         $this->assertSame([
             $lock . '1 0', 'create 1', 'fill 1,2 -> 1:1=idx_1_v2', 'fill 3 -> 1:1=idx_1_v2', 'refresh idx_1_v2', 'switch idx_1_v2',
@@ -115,18 +119,15 @@ class FullReindexerTest extends TestCase
             ],
             'orphans' => ['idx_9_v1'],
         ], $result);
-        $this->assertSame(
-            [['page_id > ?', 0], ['page_id > ?', 2], ['page_id > ?', 0], ['page_id > ?', 2]],
-            $this->wheres
-        );
+        $this->assertSame([[0, 2, 1], [2, 2, 1], [0, 2, 2], [2, 2, 2]], $this->pageIdCalls);
     }
 
     public function testAFullLastBatchIsFollowedByOneMoreQuery(): void
     {
         $this->stores->method('get')->willReturn($this->store(2));
         $this->fillRecorder();
-        $result = $this->reindexer($this->resourceReturning([], [['1', '2'], []]))->rebuild(2);
-        $this->assertSame([['page_id > ?', 0], ['page_id > ?', 2]], $this->wheres);
+        $result = $this->reindexer([['1', '2'], []])->rebuild(2);
+        $this->assertSame([[0, 2, 2], [2, 2, 2]], $this->pageIdCalls);
         $this->assertSame(1, $result['stores'][0]['documents']);
     }
 
@@ -134,7 +135,7 @@ class FullReindexerTest extends TestCase
     {
         $this->stores->method('get')->willReturn($this->store(2));
         $this->pageIndexer->expects($this->never())->method('reindex');
-        $result = $this->reindexer($this->resourceReturning([], [[]]))->rebuild(2);
+        $result = $this->reindexer([[]])->rebuild(2);
         $this->assertContains('switch idx_2_v2', $this->calls);
         $this->assertSame(0, $result['stores'][0]['documents']);
     }
@@ -145,7 +146,7 @@ class FullReindexerTest extends TestCase
         $this->stores->expects($this->never())->method('all');
         $this->pageIndexer->method('reindex')->willReturn(['upserted' => 1, 'deleted' => 0]);
         $this->indexManager->expects($this->never())->method('dropOrphans');
-        $result = $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
+        $result = $this->reindexer([['5']])->rebuild(2);
         $this->assertSame(
             [['store_id' => 2, 'index' => 'idx_2_v2', 'documents' => 1, 'categories' => 0, 'removed' => ['idx_2_v1'], 'leftovers' => []]],
             $result['stores']
@@ -164,7 +165,7 @@ class FullReindexerTest extends TestCase
         $this->locks->expects($this->never())->method('lock');
         $this->expectException(IndexingException::class);
         $this->expectExceptionMessage('Store view 99 does not exist.');
-        $this->reindexer($this->resourceReturning())->rebuild(99);
+        $this->reindexer()->rebuild(99);
     }
 
     public function testAFailedRebuildDropsTheNewIndexAndLeavesTheAliasAlone(): void
@@ -173,7 +174,7 @@ class FullReindexerTest extends TestCase
         $this->pageIndexer->method('reindex')->willThrowException(new IndexingException('1 of 2 bulk operation(s) failed'));
         $this->indexManager->expects($this->never())->method('switchAlias');
         try {
-            $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
+            $this->reindexer([['5']])->rebuild(2);
             $this->fail('IndexingException expected');
         } catch (IndexingException $exception) {
             $this->assertSame('Rebuild of store view 2 failed: 1 of 2 bulk operation(s) failed', $exception->getMessage());
@@ -194,7 +195,7 @@ class FullReindexerTest extends TestCase
         $refresh->expects($this->once())->method('dropIndex')->with('idx_2_v2');
         $this->indexManager = $refresh;
         $this->expectExceptionMessage('Rebuild of store view 2 failed: OpenSearch request failed (refresh)');
-        $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
+        $this->reindexer([['5']])->rebuild(2);
     }
 
     /** switchAlias() throws only when the alias did NOT move, so the new version is still safe to drop. */
@@ -208,7 +209,7 @@ class FullReindexerTest extends TestCase
         $switch->expects($this->once())->method('dropIndex')->with('idx_2_v2');
         $this->indexManager = $switch;
         $this->expectExceptionMessage('Rebuild of store view 2 failed: does not have the current mapping');
-        $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
+        $this->reindexer([['5']])->rebuild(2);
     }
 
     public function testALaterFailureNeverDropsAnIndexThatIsAlreadyLive(): void
@@ -222,7 +223,7 @@ class FullReindexerTest extends TestCase
         });
         $this->indexManager->expects($this->never())->method('dropOrphans');
         try {
-            $this->reindexer($this->resourceReturning([], [['5'], ['5']]))->rebuild();
+            $this->reindexer([['5'], ['5']])->rebuild();
             $this->fail('IndexingException expected');
         } catch (IndexingException $exception) {
             $this->assertSame(
@@ -250,7 +251,7 @@ class FullReindexerTest extends TestCase
         });
         $this->indexManager->expects($this->never())->method('dropOrphans');
         try {
-            $this->reindexer($this->resourceReturning([], [['5']]))->rebuild();
+            $this->reindexer([['5']])->rebuild();
             $this->fail('IndexingException expected');
         } catch (IndexingException $exception) {
             $this->assertSame('lock backend gone (store view(s) already rebuilt: 1)', $exception->getMessage());
@@ -266,7 +267,7 @@ class FullReindexerTest extends TestCase
         $drop->expects($this->once())->method('dropIndex')->willThrowException(new IndexingException('cluster gone'));
         $this->indexManager = $drop;
         $this->expectExceptionMessage('Rebuild of store view 2 failed: bulk failed');
-        $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
+        $this->reindexer([['5']])->rebuild(2);
     }
 
     public function testAnIndexThatCannotBeCreatedFailsTheRebuildWithoutCleanup(): void
@@ -279,7 +280,7 @@ class FullReindexerTest extends TestCase
         $this->indexManager = $create;
         $this->expectExceptionMessage('Rebuild of store view 2 failed: OpenSearch request failed (create)');
         try {
-            $this->reindexer($this->resourceReturning())->rebuild(2);
+            $this->reindexer()->rebuild(2);
         } finally {
             $this->assertSame(
                 ['lock thedevkitchen_cmssearch_rebuild_2 0', 'unlock thedevkitchen_cmssearch_rebuild_2'],
@@ -296,7 +297,7 @@ class FullReindexerTest extends TestCase
         $this->indexManager->expects($this->never())->method('dropIndex');
         $this->locks->expects($this->never())->method('unlock');
         try {
-            $this->reindexer($this->resourceReturning())->rebuild(2);
+            $this->reindexer()->rebuild(2);
             $this->fail('IndexingException expected');
         } catch (IndexingException $exception) {
             $this->assertSame(
@@ -312,7 +313,7 @@ class FullReindexerTest extends TestCase
         $this->heldElsewhere['thedevkitchen_cmssearch_rebuild_2'] = true;
         $this->stores->method('get')->willReturn($this->store(3));
         $this->pageIndexer->method('reindex')->willReturn(['upserted' => 1, 'deleted' => 0]);
-        $result = $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(3);
+        $result = $this->reindexer([['5']])->rebuild(3);
         $this->assertSame(3, $result['stores'][0]['store_id']);
     }
 
@@ -325,7 +326,7 @@ class FullReindexerTest extends TestCase
         $leftover->method('switchAlias')->willReturn(['deleted' => ['idx_2_v1'], 'leftovers' => ['idx_2_v2']]);
         $leftover->expects($this->never())->method('dropIndex');
         $this->indexManager = $leftover;
-        $result = $this->reindexer($this->resourceReturning([], [['5']]))->rebuild(2);
+        $result = $this->reindexer([['5']])->rebuild(2);
         $this->assertSame(['idx_2_v1'], $result['stores'][0]['removed']);
         $this->assertSame(['idx_2_v2'], $result['stores'][0]['leftovers']);
     }
@@ -335,7 +336,7 @@ class FullReindexerTest extends TestCase
         $this->stores->method('get')->willReturn($this->store(2));
         $this->fillRecorder();
         $lines = [];
-        $this->reindexer($this->resourceReturning([], [['1', '2'], ['3']]))
+        $this->reindexer([['1', '2'], ['3']])
             ->rebuild(2, function (string $line) use (&$lines): void {
                 $lines[] = $line;
             });
