@@ -1,0 +1,205 @@
+//
+//  Thedevkitchen_CmsSearch: tab bar, cards, classification filter and pagination of the search result page.
+//  Text uses a fixed dark grey: the six Local/* themes set @primary__color (= @text__color) to brand colours and
+//  some of them (e.g. #E85D04) do not reach 4.5:1 on white. The brand colour only marks the active tab and the
+//  current page (non-text indicators, 3:1).
+//  _____________________________________________
+
+@cmssearch__text-color: @color-gray20;
+@cmssearch__muted-color: @color-gray34;
+@cmssearch__border-color: @color-gray80;
+@cmssearch__accent-color: @primary__color;
+
+& when (@media-common = true) {
+    .cmssearch-tabs {
+        margin: 0 0 @indent__m;
+        border-bottom: 1px solid @cmssearch__border-color;
+    }
+
+    .cmssearch-tabs__list {
+        display: flex;
+        flex-wrap: wrap;
+        margin: 0;
+        padding: 0;
+    }
+
+    .cmssearch-tab {
+        display: inline-block;
+        margin: 0 0 -1px;
+        padding: @indent__s @indent__base;
+        border-bottom: 3px solid transparent;
+        color: @cmssearch__text-color;
+        text-decoration: none;
+
+        &:visited,
+        &:hover,
+        &:focus {
+            color: @cmssearch__text-color;
+            text-decoration: none;
+        }
+
+        &:hover {
+            border-bottom-color: @cmssearch__border-color;
+        }
+
+        &:focus-visible {
+            outline: 2px solid @cmssearch__text-color;
+            outline-offset: -2px;
+        }
+
+        &.cmssearch-tab--active,
+        &.cmssearch-tab--active:hover {
+            border-bottom-color: @cmssearch__accent-color;
+            font-weight: @font-weight__semibold;
+        }
+    }
+
+    .cmssearch-results__amount {
+        margin: 0 0 @indent__base;
+        color: @cmssearch__text-color;
+    }
+
+    .cmssearch-cards {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .cmssearch-card {
+        display: flex;
+        gap: @indent__base;
+        margin: 0 0 @indent__base;
+        padding: 0 0 @indent__base;
+        border-bottom: 1px solid @cmssearch__border-color;
+    }
+
+    .cmssearch-card__image {
+        flex: 0 0 auto;
+        max-width: 160px;
+        height: auto;
+        object-fit: cover;
+    }
+
+    .cmssearch-card__body {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .cmssearch-card__type {
+        display: inline-block;
+        margin: 0 0 @indent__xs;
+        color: @cmssearch__muted-color;
+        font-size: @font-size__s;
+        text-transform: uppercase;
+    }
+
+    .cmssearch-card__title {
+        margin: 0 0 @indent__xs;
+        font-size: @font-size__l;
+        overflow-wrap: anywhere;
+
+        a,
+        a:visited {
+            color: @cmssearch__text-color;
+            text-decoration: underline;
+        }
+
+        a:hover,
+        a:focus {
+            color: @cmssearch__text-color;
+            text-decoration: none;
+        }
+
+        a:focus-visible {
+            outline: 2px solid @cmssearch__text-color;
+            outline-offset: 2px;
+        }
+    }
+
+    .cmssearch-card__summary {
+        margin: 0;
+        color: @cmssearch__text-color;
+        overflow-wrap: anywhere;
+    }
+
+    .cmssearch-filter__list {
+        margin: 0;
+        padding: 0 0 0 @indent__base;
+        list-style: none;
+    }
+
+    .cmssearch-filter nav > .cmssearch-filter__list {
+        padding-left: 0;
+    }
+
+    .cmssearch-filter__link,
+    .cmssearch-filter__clear {
+        display: inline-block;
+        padding: @indent__xs 0;
+        color: @cmssearch__text-color;
+
+        &:visited,
+        &:hover {
+            color: @cmssearch__text-color;
+        }
+
+        &:focus-visible {
+            outline: 2px solid @cmssearch__text-color;
+            outline-offset: 2px;
+        }
+    }
+
+    .cmssearch-filter__link.is-selected {
+        font-weight: @font-weight__semibold;
+        text-decoration: underline;
+    }
+
+    .cmssearch-filter__clear {
+        margin: 0 0 @indent__s;
+        text-decoration: underline;
+    }
+
+    .cmssearch-pagination__list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: @indent__xs;
+        margin: @indent__base 0;
+        padding: 0;
+        list-style: none;
+
+        a,
+        span {
+            display: inline-block;
+            min-width: 32px;
+            padding: @indent__xs @indent__s;
+            border: 1px solid @cmssearch__border-color;
+            color: @cmssearch__text-color;
+            text-align: center;
+        }
+
+        a:visited,
+        a:hover {
+            color: @cmssearch__text-color;
+        }
+
+        a:focus-visible {
+            outline: 2px solid @cmssearch__text-color;
+            outline-offset: 2px;
+        }
+
+        .cmssearch-pagination__current {
+            border-color: @cmssearch__accent-color;
+            font-weight: @font-weight__semibold;
+        }
+    }
+}
+
+.media-width(@extremum, @break) when (@extremum = 'max') and (@break = @screen__s) {
+    .cmssearch-card {
+        flex-direction: column;
+    }
+
+    .cmssearch-card__image {
+        max-width: 100%;
+    }
+}

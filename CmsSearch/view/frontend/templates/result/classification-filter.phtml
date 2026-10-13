@@ -1,0 +1,43 @@
+<?php
+/**
+ * Hierarchical classification filter of a content tab (sidebar). A parent term includes its descendants.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+/** @var \Thedevkitchen\CmsSearch\ViewModel\ClassificationFilter $viewModel */
+$viewModel = $block->getData('view_model');
+if (!$viewModel->isVisible()) {
+    return;
+}
+$renderNodes = static function (array $nodes) use (&$renderNodes, $escaper): string {
+    $html = '<ul class="cmssearch-filter__list">';
+    foreach ($nodes as $node) {
+        $html .= '<li class="cmssearch-filter__item"><a class="cmssearch-filter__link' . ($node['selected'] ? ' is-selected' : '') . '"'
+            . ' href="' . $escaper->escapeUrl($node['url']) . '"'
+            . ($node['selected'] ? ' aria-current="true"' : '')
+            . ' data-cmssearch-term="' . $escaper->escapeHtmlAttr($node['code']) . '" data-count="' . (int) $node['count'] . '">'
+            . '<span class="cmssearch-filter__label">' . $escaper->escapeHtml($node['label']) . '</span> '
+            . '<span class="cmssearch-filter__count">(' . (int) $node['count'] . ')</span></a>';
+        if ($node['children'] !== []) {
+            $html .= $renderNodes($node['children']);
+        }
+        $html .= '</li>';
+    }
+    return $html . '</ul>';
+};
+$clearUrl = $viewModel->getClearUrl();
+?>
+<div class="block cmssearch-filter" data-cmssearch-filter>
+    <div class="block-title cmssearch-filter__title">
+        <strong id="cmssearch-filter-title" role="heading" aria-level="2"><?= $escaper->escapeHtml(__('Classification')) ?></strong>
+    </div>
+    <div class="block-content">
+        <?php if ($clearUrl !== null): ?>
+            <a class="cmssearch-filter__clear" href="<?= $escaper->escapeUrl($clearUrl) ?>" data-cmssearch-clear><?= $escaper->escapeHtml(__('Clear filter')) ?></a>
+        <?php endif; ?>
+        <?php if ($viewModel->getNodes() !== []): ?>
+            <nav aria-labelledby="cmssearch-filter-title"><?= /* @noEscape */ $renderNodes($viewModel->getNodes()) ?></nav>
+        <?php endif; ?>
+    </div>
+</div>

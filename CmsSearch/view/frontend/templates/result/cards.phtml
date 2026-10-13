@@ -1,0 +1,53 @@
+<?php
+/**
+ * Cards of the active CMS tab (its tab panel). Every value comes from the index as plain text and is escaped here.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+/** @var \Thedevkitchen\CmsSearch\ViewModel\ResultCards $viewModel */
+$viewModel = $block->getData('view_model');
+if (!$viewModel->isVisible()) {
+    return;
+}
+$cards = $viewModel->getCards();
+$empty = $viewModel->getEmptyState();
+?>
+<div id="<?= $escaper->escapeHtmlAttr($viewModel->getPanelId()) ?>" class="cmssearch-results" role="tabpanel" aria-labelledby="<?= $escaper->escapeHtmlAttr($viewModel->getActiveTabId()) ?>" data-cmssearch-results data-total="<?= (int) $viewModel->getTotal() ?>">
+    <?php if ($empty === \Thedevkitchen\CmsSearch\ViewModel\ResultCards::EMPTY_TAB): ?>
+        <div class="message info empty" data-cmssearch-empty="tab">
+            <div>
+                <?= $escaper->escapeHtml(__('No results in this tab for your search.')) ?>
+                <?php if ($viewModel->hasFilter()): ?>
+                    <a href="<?= $escaper->escapeUrl($viewModel->getClearFilterUrl()) ?>" data-cmssearch-clear><?= $escaper->escapeHtml(__('Clear the classification filter')) ?></a>
+                <?php endif; ?>
+            </div>
+        </div>
+    <?php elseif ($empty === \Thedevkitchen\CmsSearch\ViewModel\ResultCards::EMPTY_PAGE): ?>
+        <div class="message info empty" data-cmssearch-empty="page">
+            <div>
+                <?= $escaper->escapeHtml(__('This page has no results.')) ?>
+                <a href="<?= $escaper->escapeUrl($viewModel->getFirstPageUrl()) ?>"><?= $escaper->escapeHtml(__('Go to the first page')) ?></a>
+            </div>
+        </div>
+    <?php else: ?>
+        <p class="cmssearch-results__amount" data-cmssearch-amount><?= $escaper->escapeHtml(__('%1 result(s)', $viewModel->getTotal())) ?></p>
+        <ol class="cmssearch-cards">
+            <?php foreach ($cards as $card): ?>
+                <li class="cmssearch-card" data-cmssearch-card>
+                    <?php if ($card['image'] !== null): ?>
+                        <img class="cmssearch-card__image" src="<?= $escaper->escapeUrl($card['image']) ?>" alt="" loading="lazy" width="160" height="120"/>
+                    <?php endif; ?>
+                    <div class="cmssearch-card__body">
+                        <span class="cmssearch-card__type" data-cmssearch-type><?= $escaper->escapeHtml($card['type_label']) ?></span>
+                        <h2 class="cmssearch-card__title"><?php if ($card['url'] !== ''): ?><a href="<?= $escaper->escapeUrl($card['url']) ?>"><?= $escaper->escapeHtml($card['title']) ?></a><?php else: ?><?= $escaper->escapeHtml($card['title']) ?><?php endif; ?></h2>
+                        <?php if ($card['summary'] !== ''): ?>
+                            <p class="cmssearch-card__summary"><?= $escaper->escapeHtml($card['summary']) ?></p>
+                        <?php endif; ?>
+                    </div>
+                </li>
+            <?php endforeach; ?>
+        </ol>
+    <?php endif; ?>
+    <?= $block->getChildHtml('pagination') ?>
+</div>
