@@ -124,6 +124,12 @@
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
+    <!-- Plan 7: the rule-side banner observer logs a failed link lookup (class only) to the queue log. -->
+    <type name="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
     <!-- Plan 6: mass "Update attributes" and website assignment write by raw SQL (no product model event). -->
     <type name="Magento\Catalog\Model\Product\Action">
         <plugin name="thedevkitchen_cmssearch_publish_product_reindex"

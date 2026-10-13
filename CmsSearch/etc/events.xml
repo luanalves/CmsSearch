@@ -56,4 +56,29 @@
     <event name="catalog_product_import_bunch_delete_after">
         <observer name="thedevkitchen_cmssearch_publish_product_import_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishProductImportReindex"/>
     </event>
+    <!-- Plan 7: Dynamic Block links edited from the RULE side (cart / catalog price rules) or removed with the rule. -->
+    <event name="salesrule_rule_save_before">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="salesrule_rule_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="salesrule_rule_delete_before">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="salesrule_rule_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="catalogrule_rule_save_before">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="catalogrule_rule_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="catalogrule_rule_delete_before">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
+    <event name="catalogrule_rule_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_rule_banner_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex"/>
+    </event>
 </config>

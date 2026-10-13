@@ -13,6 +13,7 @@ use Thedevkitchen\CmsSearch\Observer\PublishDynamicBlockReindex;
 use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
 use Thedevkitchen\CmsSearch\Observer\PublishProductImportReindex;
 use Thedevkitchen\CmsSearch\Observer\PublishProductReindex;
+use Thedevkitchen\CmsSearch\Observer\PublishRuleBannerReindex;
 use Thedevkitchen\CmsSearch\Observer\PublishWidgetInstanceReindex;
 use Thedevkitchen\CmsSearch\Observer\SavePageClassification;
 
@@ -102,6 +103,14 @@ class EventsContractTest extends TestCase
             'catalog_category_move_after' => PublishCategoryReindex::class,
             'catalog_product_import_bunch_save_after' => PublishProductImportReindex::class,
             'catalog_product_import_bunch_delete_after' => PublishProductImportReindex::class,
+            'salesrule_rule_save_before' => PublishRuleBannerReindex::class,
+            'salesrule_rule_save_after' => PublishRuleBannerReindex::class,
+            'salesrule_rule_delete_before' => PublishRuleBannerReindex::class,
+            'salesrule_rule_delete_after' => PublishRuleBannerReindex::class,
+            'catalogrule_rule_save_before' => PublishRuleBannerReindex::class,
+            'catalogrule_rule_save_after' => PublishRuleBannerReindex::class,
+            'catalogrule_rule_delete_before' => PublishRuleBannerReindex::class,
+            'catalogrule_rule_delete_after' => PublishRuleBannerReindex::class,
         ];
         foreach ($expected as $event => $class) {
             $instances = array_map(
