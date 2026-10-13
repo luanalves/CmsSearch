@@ -8,6 +8,7 @@ use Magento\Staging\Model\StagingApplier\PostProcessorInterface;
 use Magento\Ui\DataProvider\Modifier\ModifierInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Thedevkitchen\CmsSearch\Api\BlockReferenceResolverInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ClassificationTermSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeSearchResultsInterface;
 use Thedevkitchen\CmsSearch\Console\Command\ReindexCommand;
@@ -19,6 +20,7 @@ use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
+use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
 use Thedevkitchen\CmsSearch\Model\Search\CmsSearchQuery;
 use Thedevkitchen\CmsSearch\Model\Search\ProductCount;
 use Thedevkitchen\CmsSearch\Model\Search\SearchState;
@@ -351,5 +353,22 @@ class DiPreferencesContractTest extends TestCase
         $this->assertCount(1, $argument);
         $this->assertSame('object', (string) $argument[0]->attributes('xsi', true)->type);
         $this->assertSame(FullReindexer::class . '\\Proxy', ltrim((string) $argument[0], '\\'));
+    }
+
+    /**
+     * Plan 6 Task 7: the reference graph is a replaceable preference, global (the consumer and the CLI run in the
+     * global area) and declared once.
+     */
+    public function testTheReferenceGraphResolverIsAGlobalPreference(): void
+    {
+        $xpath = '//preference[@for="Thedevkitchen\\CmsSearch\\Api\\BlockReferenceResolverInterface"]/@type';
+        $this->assertSame(
+            [BlockReferenceResolver::class],
+            array_map(static fn ($node): string => ltrim((string) $node, '\\'), $this->di('etc/di.xml')->xpath($xpath))
+        );
+        foreach (['etc/adminhtml/di.xml', 'etc/frontend/di.xml'] as $file) {
+            $this->assertSame([], $this->di($file)->xpath($xpath), "$file must not override the graph resolver");
+        }
+        $this->assertTrue(is_a(BlockReferenceResolver::class, BlockReferenceResolverInterface::class, true));
     }
 }
