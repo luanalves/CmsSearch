@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\Reference;
 
+use Psr\Log\LoggerInterface;
 use Thedevkitchen\CmsSearch\Api\BlockReferenceResolverInterface;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreContextProvider;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockRef;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockSource;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostSelector;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostSource;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
@@ -21,7 +23,9 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\WidgetInstance;
  * which also stops cycles. Hidden or missing blocks keep their structural row (so creating, renaming or re-activating
  * them finds the host) but are not followed; segment-restricted Dynamic Blocks record their segment ids and are not
  * followed (D7); Dynamic Blocks linked to a price rule keep their row and are not followed either. Writes only the
- * graph table (ReferenceStore): no message is published, no indexer is called.
+ * graph table (ReferenceStore): no message is published, no indexer is called. A block's content is parsed once per
+ * call however many hosts publish it; a block whose content cannot be extracted keeps its row, is not followed and is
+ * logged by id only (one malformed block never fails the batch).
  */
 class BlockReferenceResolver implements BlockReferenceResolverInterface
 {
@@ -38,7 +42,8 @@ class BlockReferenceResolver implements BlockReferenceResolverInterface
         private readonly StoreThemeResolver $storeThemeResolver,
         private readonly StoreContextProvider $storeContextProvider,
         private readonly BlockReader $blockReader,
-        private readonly ReferenceStore $referenceStore
+        private readonly ReferenceStore $referenceStore,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -70,6 +75,8 @@ class BlockReferenceResolver implements BlockReferenceResolverInterface
             }
         }
         $rows = [];
+        /** @var array<string, list<BlockRef>> $childrenOf block key => references in its content */
+        $childrenOf = [];
         while ($frontier !== []) {
             $fresh = [];
             foreach ($frontier as $node) {
@@ -100,7 +107,8 @@ class BlockReferenceResolver implements BlockReferenceResolverInterface
                 if ($block === null || $block->isExcluded() || $node['depth'] >= self::MAX_DEPTH) {
                     continue;
                 }
-                foreach ($this->directiveParser->parseHtml($block->getContent()) as $child) {
+                $childrenOf[$block->key()] ??= $this->childrenOf($block);
+                foreach ($childrenOf[$block->key()] as $child) {
                     $next[] = ['depth' => $node['depth'] + 1, 'ref' => $child] + $node;
                 }
             }
@@ -122,6 +130,22 @@ class BlockReferenceResolver implements BlockReferenceResolverInterface
     public function hostsForWidgetInstance(int $instanceId): array
     {
         return $this->referenceStore->hostsForSource(ReferenceStore::SOURCE_WIDGET, $instanceId);
+    }
+
+    /**
+     * @return list<BlockRef> [] when the content cannot be extracted (logged by id only)
+     */
+    private function childrenOf(BlockSource $block): array
+    {
+        try {
+            return $this->directiveParser->parseHtml($block->getContent());
+        } catch (\UnexpectedValueException) {
+            $this->logger->warning(
+                'CMS search block not followed: its content could not be extracted',
+                ['block_kind' => $block->getKind(), 'block_id' => $block->getId()]
+            );
+            return [];
+        }
     }
 
     /**

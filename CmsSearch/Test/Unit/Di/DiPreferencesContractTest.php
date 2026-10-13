@@ -371,4 +371,15 @@ class DiPreferencesContractTest extends TestCase
         }
         $this->assertTrue(is_a(BlockReferenceResolver::class, BlockReferenceResolverInterface::class, true));
     }
+
+    /** Skipped malformed blocks are logged to the queue log (not the core system log). */
+    public function testTheReferenceResolversLogToTheQueueFile(): void
+    {
+        $di = $this->di('etc/di.xml');
+        foreach ([BlockReferenceResolver::class, \Thedevkitchen\CmsSearch\Model\Reference\BlockTextResolver::class] as $class) {
+            $logger = $di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]');
+            $this->assertCount(1, $logger, $class);
+            $this->assertSame(self::LOGGER, ltrim((string) $logger[0], '\\'), $class);
+        }
+    }
 }

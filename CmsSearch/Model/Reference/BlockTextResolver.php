@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\Reference;
 
+use Psr\Log\LoggerInterface;
+use Thedevkitchen\CmsSearch\Model\Indexer\Text\ExtractedContent;
 use Thedevkitchen\CmsSearch\Model\Indexer\TextExtractor;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockRef;
+use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockSource;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
 
 /**
@@ -15,6 +18,9 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
  * resolved again by identifier, like the storefront does. Segment-restricted Dynamic Blocks add no text in v1 but
  * report their segment ids (D7); Dynamic Blocks linked to a cart/catalog price rule add no text either (BlockReader). Order: the host's references in graph order (document order of directives, then
  * widget placements), nested blocks breadth-first; the text per host is capped at MAX_TEXT_CHARS.
+ * Each block's content is extracted once per call, however many hosts publish it; a block whose extraction fails
+ * (TextExtractor's UnexpectedValueException) is skipped with its children for every host and logged by id only, so
+ * one malformed block never fails the whole batch.
  */
 class BlockTextResolver
 {
@@ -28,7 +34,8 @@ class BlockTextResolver
         private readonly ReferenceStore $referenceStore,
         private readonly BlockReader $blockReader,
         private readonly DirectiveParser $directiveParser,
-        private readonly TextExtractor $textExtractor
+        private readonly TextExtractor $textExtractor,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -49,6 +56,8 @@ class BlockTextResolver
         $seenRefs = [];
         $doneBlocks = [];
         $frontier = [];
+        /** @var array<string, array{0: ExtractedContent, 1: list<BlockRef>}|null> $extracted block key => content, children */
+        $extracted = [];
         foreach ($this->referenceStore->directRefs($hostType, $ids, $storeId) as $hostId => $rows) {
             foreach ($rows as $row) {
                 $ref = self::refOf($row);
@@ -81,7 +90,13 @@ class BlockTextResolver
                     array_push($segments[$hostId], ...$block->getSegmentIds());
                     continue;
                 }
-                $content = $this->textExtractor->extract($block->getContent());
+                if (!array_key_exists($block->key(), $extracted)) {
+                    $extracted[$block->key()] = $this->extract($block);
+                }
+                if ($extracted[$block->key()] === null) {
+                    continue; // malformed block: no text, children not followed (logged once)
+                }
+                [$content, $children] = $extracted[$block->key()];
                 $truncated[$hostId] = $truncated[$hostId] || $content->isTruncated();
                 $text = $content->getText();
                 if ($text !== '') {
@@ -96,7 +111,7 @@ class BlockTextResolver
                     }
                 }
                 if ($depth < BlockReferenceResolver::MAX_DEPTH) {
-                    foreach ($this->directiveParser->parse($content->getDirectives()) as $child) {
+                    foreach ($children as $child) {
                         $next[] = [$hostId, $child, $depth + 1];
                     }
                 }
@@ -110,6 +125,24 @@ class BlockTextResolver
             $result[$id] = new HostEnrichment(implode(' ', $texts[$id]), $segmentIds, $truncated[$id]);
         }
         return $result;
+    }
+
+    /**
+     * @return array{0: ExtractedContent, 1: list<BlockRef>}|null null when the block's content cannot be extracted
+     */
+    private function extract(BlockSource $block): ?array
+    {
+        try {
+            $content = $this->textExtractor->extract($block->getContent());
+        } catch (\UnexpectedValueException) {
+            // Ids only: never content.
+            $this->logger->warning(
+                'CMS search block skipped: its content could not be extracted',
+                ['block_kind' => $block->getKind(), 'block_id' => $block->getId()]
+            );
+            return null;
+        }
+        return [$content, $this->directiveParser->parse($content->getDirectives())];
     }
 
     /**

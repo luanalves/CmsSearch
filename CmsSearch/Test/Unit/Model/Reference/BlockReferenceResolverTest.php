@@ -23,6 +23,8 @@ use Thedevkitchen\CmsSearch\Model\Reference\ReferenceStore;
 use Thedevkitchen\CmsSearch\Model\Reference\StoreThemeResolver;
 use Thedevkitchen\CmsSearch\Model\Reference\WidgetInstanceReader;
 use Thedevkitchen\CmsSearch\Model\Reference\WidgetInstanceResolver;
+use Thedevkitchen\CmsSearch\Test\Unit\Support\CountingTextExtractor;
+use Thedevkitchen\CmsSearch\Test\Unit\Support\RecordingLogger;
 
 class BlockReferenceResolverTest extends TestCase
 {
@@ -51,12 +53,27 @@ class BlockReferenceResolverTest extends TestCase
         });
     }
 
+    private ?CountingTextExtractor $extractor = null;
+    private ?RecordingLogger $logger = null;
+
     private function resolver(): BlockReferenceResolver
     {
-        $parser = new DirectiveParser(new TextExtractor());
+        $this->extractor = new CountingTextExtractor();
+        $this->logger = new RecordingLogger();
+        $parser = new DirectiveParser($this->extractor);
         $theme = $this->createMock(StoreThemeResolver::class);
         $theme->method('themeId')->willReturn(5);
-        return new BlockReferenceResolver($this->hosts, $parser, $this->widgets, new WidgetInstanceResolver($parser), $theme, $this->stores, $this->blocks, $this->store);
+        return new BlockReferenceResolver(
+            $this->hosts,
+            $parser,
+            $this->widgets,
+            new WidgetInstanceResolver($parser),
+            $theme,
+            $this->stores,
+            $this->blocks,
+            $this->store,
+            $this->logger
+        );
     }
 
     private static function page(int $id, string $content): HostSource
@@ -187,6 +204,39 @@ class BlockReferenceResolverTest extends TestCase
         $this->blocksFrom(['dynamic_block#3' => new BlockSource('dynamic_block', 3, '', '{{block id="x"}}', [4, 7])], 1);
         $this->resolver()->refreshForHosts('page', [10], 2);
         $this->assertSame(['10 dynamic_block 3 - content 0 0 4,7'], $this->rows());
+    }
+
+    public function testABlockSharedByManyHostsIsParsedOncePerCall(): void
+    {
+        $pages = [];
+        foreach (range(10, 209) as $id) {
+            $pages[$id] = self::page($id, '{{block id="1"}}');
+        }
+        $this->hosts->method('read')->willReturn($pages);
+        $this->blocksFrom([
+            'block#1' => self::cms(1, 'a', '<p>a</p>{{block id="2"}}'),
+            'block#2' => self::cms(2, 'b', '<p>b</p>'),
+        ], 2);
+        $this->assertSame(400, $this->resolver()->refreshForHosts('page', range(10, 209), 2));
+        $this->assertSame(1, $this->extractor->calls['<p>a</p>{{block id="2"}}']);
+        $this->assertSame(1, $this->extractor->calls['<p>b</p>']);
+    }
+
+    public function testABlockWhoseExtractionFailsKeepsItsRowIsNotFollowedAndIsLoggedByIdOnly(): void
+    {
+        $this->hosts->method('read')->willReturn([
+            10 => self::page(10, '{{block id="1"}}{{block id="4"}}'),
+            11 => self::page(11, '{{block id="1"}}'),
+        ]);
+        $this->blocksFrom([
+            'block#1' => self::cms(1, 'a', '<p>SECRET ' . CountingTextExtractor::FAIL_MARKER . '</p>{{block id="3"}}'),
+            'block#4' => self::cms(4, 'd', '<p>d</p>'),
+        ], 1);
+        $this->resolver()->refreshForHosts('page', [10, 11], 2);
+        $this->assertSame(['10 block 1 - content 0 0 -', '10 block 4 - content 0 0 -', '11 block 1 - content 0 0 -'], $this->rows());
+        $this->assertCount(1, $this->logger->records);
+        $this->assertSame(['block_kind' => 'block', 'block_id' => 1], $this->logger->records[0][2]);
+        $this->assertStringNotContainsString('SECRET', json_encode($this->logger->records));
     }
 
     public function testSpellingsTheCollationConsidersEqualGiveOneRow(): void

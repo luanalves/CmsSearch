@@ -14,6 +14,8 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockSource;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostEnrichment;
 use Thedevkitchen\CmsSearch\Model\Reference\DirectiveParser;
 use Thedevkitchen\CmsSearch\Model\Reference\ReferenceStore;
+use Thedevkitchen\CmsSearch\Test\Unit\Support\CountingTextExtractor;
+use Thedevkitchen\CmsSearch\Test\Unit\Support\RecordingLogger;
 
 class BlockTextResolverTest extends TestCase
 {
@@ -28,10 +30,14 @@ class BlockTextResolverTest extends TestCase
         $this->blocks = $this->createMock(BlockReader::class);
     }
 
+    private ?CountingTextExtractor $extractor = null;
+    private ?RecordingLogger $logger = null;
+
     private function resolver(): BlockTextResolver
     {
-        $extractor = new TextExtractor();
-        return new BlockTextResolver($this->store, $this->blocks, new DirectiveParser($extractor), $extractor);
+        $this->extractor = new CountingTextExtractor();
+        $this->logger = new RecordingLogger();
+        return new BlockTextResolver($this->store, $this->blocks, new DirectiveParser($this->extractor), $this->extractor, $this->logger);
     }
 
     private static function ref(string $kind, int $id, string $identifier = '', ?string $segments = null): array
@@ -105,6 +111,62 @@ class BlockTextResolverTest extends TestCase
         ]);
         $this->assertSame([10 => ['Public', []]], self::texts($this->resolver()->forHosts('page', [10], 2)));
         $this->assertSame([['dynamic_block#3', 'block#1']], $this->reads, 'children of an excluded block are not read');
+    }
+
+    public function testABlockSharedByManyHostsIsExtractedOncePerCall(): void
+    {
+        $refs = [];
+        foreach (range(10, 209) as $hostId) {
+            $refs[$hostId] = [self::ref('block', 1)];
+        }
+        $this->store->method('directRefs')->willReturn($refs);
+        $this->blocksFrom([
+            'block#1' => new BlockSource('block', 1, 'a', '<p>Shared</p>{{block id="2"}}'),
+            'block#2' => new BlockSource('block', 2, 'b', '<p>Nested shared</p>'),
+        ]);
+        $result = $this->resolver()->forHosts('page', range(10, 209), 2);
+        $this->assertSame(['Shared Nested shared', []], self::texts($result)[209]);
+        $this->assertSame(
+            ['<p>Shared</p>{{block id="2"}}' => 1, '<p>Nested shared</p>' => 1],
+            $this->extractor->calls,
+            'one extraction per block and call, not per host'
+        );
+        $this->assertCount(2, $this->reads, 'one BlockReader call per level');
+    }
+
+    public function testABlockWhoseExtractionFailsIsSkippedForEveryHostAndLoggedByIdOnce(): void
+    {
+        $this->store->method('directRefs')->willReturn([
+            10 => [self::ref('block', 1), self::ref('block', 2)],
+            11 => [self::ref('block', 1)],
+        ]);
+        $this->blocksFrom([
+            'block#1' => new BlockSource('block', 1, 'a', '<p>SECRET ' . CountingTextExtractor::FAIL_MARKER . '</p>{{block id="3"}}'),
+            'block#2' => new BlockSource('block', 2, 'b', '<p>Fine</p>'),
+            'block#3' => new BlockSource('block', 3, 'c', '<p>Child of broken</p>'),
+        ]);
+        $result = $this->resolver()->forHosts('page', [10, 11], 2);
+        $this->assertSame([10 => ['Fine', []], 11 => ['', []]], self::texts($result));
+        $this->assertCount(1, $this->logger->records, 'logged once per block and call');
+        $this->assertSame('warning', $this->logger->records[0][0]);
+        $this->assertSame(['block_kind' => 'block', 'block_id' => 1], $this->logger->records[0][2]);
+        $this->assertStringNotContainsString('SECRET', json_encode($this->logger->records));
+        $this->assertNotContains('block#3', array_merge(...$this->reads), 'children of a broken block are not followed');
+    }
+
+    public function testOtherFailuresOfTheExtractorStillPropagate(): void
+    {
+        $this->store->method('directRefs')->willReturn([10 => [self::ref('block', 1)]]);
+        $this->blocksFrom(['block#1' => new BlockSource('block', 1, 'a', '<p>x</p>')]);
+        $extractor = new class() extends TextExtractor {
+            public function extract(string $html): \Thedevkitchen\CmsSearch\Model\Indexer\Text\ExtractedContent
+            {
+                throw new \RuntimeException('out of memory');
+            }
+        };
+        $this->expectExceptionMessage('out of memory');
+        (new BlockTextResolver($this->store, $this->blocks, new DirectiveParser($extractor), $extractor, new RecordingLogger()))
+            ->forHosts('page', [10], 2);
     }
 
     public function testNestedBlocksAreFollowed(): void

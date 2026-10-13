@@ -163,4 +163,15 @@
     <!-- Plan 6: reference graph (blocks / dynamic blocks published by pages, products and categories). -->
     <preference for="Thedevkitchen\CmsSearch\Api\BlockReferenceResolverInterface"
                 type="Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver"/>
+    <!-- A block whose content cannot be extracted is skipped and logged (ids only) to the queue log. -->
+    <type name="Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Thedevkitchen\CmsSearch\Model\Reference\BlockTextResolver">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
 </config>
