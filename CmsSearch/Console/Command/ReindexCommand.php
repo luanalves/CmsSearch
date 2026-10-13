@@ -13,34 +13,45 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
+use Thedevkitchen\CmsSearch\Model\Indexer\CatalogIdSource;
 use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\PageIdKeysetTrait;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
 
 /**
- * bin/magento thedevkitchen:cmssearch:reindex [--entity=page|all] [--store=ID] [--sync]
+ * bin/magento thedevkitchen:cmssearch:reindex [--entity=page|category|product|all] [--store=ID] [--sync]
  *
- * Default (asynchronous): initial load and recovery (e.g. after the broker was down, TS-37): publishes one "page save"
- * message per CMS page; the thedevkitchen.cmssearch.reindex consumer does the work. Nothing is indexed in this process.
- * --sync (operators only, CLI only): rebuilds the index in this process - a new index per store view, filled, refreshed,
- * then an atomic alias switch (zero downtime) - and publishes nothing; without --store it also drops the indices of
- * deleted store views. Stop the consumer first, or publish the pages again afterwards (see FullReindexer).
- * --sync rebuilds pages AND category documents (Plan 6) and prints one page line and one category line per store view;
- * the asynchronous --entity=category is not offered yet.
+ * Default (asynchronous): initial load and recovery (e.g. after the broker was down, TS-37): publishes one "save"
+ * message per CMS page, category and/or product (all = the three, in that order); the thedevkitchen.cmssearch.reindex
+ * consumer does the work (page and category documents with their block text, product block text for the native
+ * product index). Ids are read in keyset batches of $batchSize and each batch is published before the next one is
+ * read, so memory stays bounded however large the catalog is. Publishing stops at the first message the broker does
+ * not take (exit 1, details in var/log/cmssearch_reindex.log): re-run the command once the broker is back.
+ * --sync (operators only, CLI only): rebuilds the CMS search index in this process - pages AND categories into a new
+ * index per store view, then an atomic alias switch - and publishes nothing; without --store it also drops the indices
+ * of deleted store views. --entity=page|category|all all rebuild the whole CMS index; products live in the native
+ * index and are refreshed asynchronously only (--sync --entity=product is refused). Stop the consumer first, or
+ * publish again afterwards (see FullReindexer).
  */
 class ReindexCommand extends Command
 {
     use PageIdKeysetTrait;
 
     public const NAME = 'thedevkitchen:cmssearch:reindex';
-    private const SUPPORTED_ENTITIES = ['page', 'all'];
+    private const SUPPORTED_ENTITIES = ['page', 'category', 'product', 'all'];
+    private const LABELS = [
+        ReindexMessageInterface::ENTITY_PAGE => 'CMS pages',
+        ReindexMessageInterface::ENTITY_CATEGORY => 'categories',
+        ReindexMessageInterface::ENTITY_PRODUCT => 'products',
+    ];
 
     public function __construct(
         private readonly ResourceConnection $resource,
         private readonly StoreManagerInterface $storeManager,
         private readonly MessageSender $sender,
         private readonly FullReindexer $fullReindexer,
+        private readonly CatalogIdSource $catalogIdSource,
         private readonly int $batchSize = 500
     ) {
         parent::__construct();
@@ -49,10 +60,10 @@ class ReindexCommand extends Command
     protected function configure(): void
     {
         $this->setName(self::NAME)
-            ->setDescription('Publishes CMS Search reindex messages for CMS pages (processed asynchronously by the thedevkitchen.cmssearch.reindex consumer), or rebuilds the index with --sync')
-            ->addOption('entity', null, InputOption::VALUE_REQUIRED, 'page or all (all = every supported entity: page)', 'all')
+            ->setDescription('Publishes CMS Search reindex messages for CMS pages, categories and products (processed asynchronously by the thedevkitchen.cmssearch.reindex consumer), or rebuilds the CMS index with --sync')
+            ->addOption('entity', null, InputOption::VALUE_REQUIRED, 'page, category, product or all (all = page, category and product)', 'all')
             ->addOption('store', null, InputOption::VALUE_REQUIRED, 'Store view id to limit the reindex to (default: every store view)')
-            ->addOption('sync', null, InputOption::VALUE_NONE, 'Rebuild in this process: new index per store view + atomic alias switch (stop the consumer first, or run again without --sync afterwards)');
+            ->addOption('sync', null, InputOption::VALUE_NONE, 'Rebuild the CMS index (pages and categories) in this process: new index per store view + atomic alias switch (stop the consumer first, or run again without --sync afterwards)');
         parent::configure();
     }
 
@@ -84,50 +95,72 @@ class ReindexCommand extends Command
         }
 
         if ($input->getOption('sync')) {
+            if ($entity === ReindexMessageInterface::ENTITY_PRODUCT) {
+                $output->writeln('<error>--sync rebuilds the CMS search index (pages and categories). Products are refreshed asynchronously: run --entity=product without --sync.</error>');
+                return Cli::RETURN_FAILURE;
+            }
             return $this->sync($storeId, $output);
         }
 
+        $types = $entity === 'all' ? array_keys(self::LABELS) : [$entity];
+        foreach ($types as $type) {
+            [$published, $failed] = $this->publish($type, $storeId, $output);
+            $output->writeln(sprintf(
+                'Published %d reindex message(s) for %s (store: %s).',
+                $published,
+                self::LABELS[$type],
+                $storeId === null ? 'all' : (string) $storeId
+            ));
+            if ($failed > 0) {
+                $output->writeln(sprintf(
+                    '<error>%d message(s) could not be published; publishing stopped at the first failure (run the command again once the broker is reachable); see var/log/cmssearch_reindex.log.</error>',
+                    $failed
+                ));
+                return Cli::RETURN_FAILURE;
+            }
+        }
+        return Cli::RETURN_SUCCESS;
+    }
+
+    /**
+     * Publishes one save message per id of $type, batch by batch; stops at the first failed send.
+     *
+     * @return array{0: int, 1: int} published, failed (0 or 1)
+     */
+    private function publish(string $type, ?int $storeId, OutputInterface $output): array
+    {
         $published = 0;
-        $failed = 0;
         $lastId = 0;
         do {
-            $pageIds = $this->nextPageIds($lastId);
-            foreach ($pageIds as $pageId) {
-                $message = new ReindexMessage(
-                    ReindexMessageInterface::ENTITY_PAGE,
-                    $pageId,
-                    ReindexMessageInterface::ACTION_SAVE,
-                    time(),
-                    $storeId
-                );
-                if ($this->sender->send($message)) {
-                    $published++;
-                } else {
-                    $failed++;
+            $ids = $this->nextIds($type, $lastId);
+            foreach ($ids as $id) {
+                $message = new ReindexMessage($type, $id, ReindexMessageInterface::ACTION_SAVE, time(), $storeId);
+                if (!$this->sender->send($message)) {
+                    return [$published, 1];
                 }
-                $lastId = $pageId;
+                $published++;
+                $lastId = $id;
             }
-            if ($pageIds !== []) {
+            if ($ids !== []) {
                 $output->writeln(
-                    sprintf('Batch done: %d published, %d failed so far (last page id %d).', $published, $failed, $lastId),
+                    sprintf('Batch done: %d %s message(s) published so far (last id %d).', $published, $type, $lastId),
                     OutputInterface::VERBOSITY_VERBOSE
                 );
             }
-        } while (count($pageIds) === $this->batchSize);
+        } while (count($ids) === $this->batchSize);
+        return [$published, 0];
+    }
 
-        $output->writeln(sprintf(
-            'Published %d reindex message(s) for CMS pages (store: %s).',
-            $published,
-            $storeId === null ? 'all' : (string) $storeId
-        ));
-        if ($failed > 0) {
-            $output->writeln(sprintf(
-                '<error>%d message(s) could not be published; see var/log/cmssearch_reindex.log.</error>',
-                $failed
-            ));
-            return Cli::RETURN_FAILURE;
-        }
-        return Cli::RETURN_SUCCESS;
+    /**
+     * @return int[] next keyset batch of ids of $type after $afterId, ascending
+     */
+    private function nextIds(string $type, int $afterId): array
+    {
+        return match ($type) {
+            ReindexMessageInterface::ENTITY_PAGE => $this->nextPageIds($afterId),
+            ReindexMessageInterface::ENTITY_CATEGORY => $this->catalogIdSource->nextCategoryIds($afterId, $this->batchSize),
+            ReindexMessageInterface::ENTITY_PRODUCT => $this->catalogIdSource->nextProductIds($afterId, $this->batchSize),
+        };
     }
 
     private function sync(?int $storeId, OutputInterface $output): int

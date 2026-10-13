@@ -49,9 +49,9 @@
             <argument name="reporting" xsi:type="object">Thedevkitchen\CmsSearch\Ui\DataProvider\ContentType\ContentTypeReporting</argument>
         </arguments>
     </virtualType>
-    <!-- Reindex queue processor: CMS page documents in one OpenSearch index per store view (Plan 4). -->
+    <!-- Reindex queue processor: page and category documents, product block text and the block reference graph (Plans 4 and 6). -->
     <preference for="Thedevkitchen\CmsSearch\Model\Queue\ReindexProcessorInterface"
-                type="Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor"/>
+                type="Thedevkitchen\CmsSearch\Model\Queue\HostReindexProcessor"/>
     <virtualType name="Thedevkitchen\CmsSearch\Model\Queue\Log\Handler" type="Magento\Framework\Logger\Handler\Base">
         <arguments>
             <argument name="fileName" xsi:type="string">/var/log/cmssearch_reindex.log</argument>
@@ -79,7 +79,7 @@
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
-    <type name="Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor">
+    <type name="Thedevkitchen\CmsSearch\Model\Queue\HostReindexProcessor">
         <arguments>
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>

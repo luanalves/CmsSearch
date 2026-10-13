@@ -54,11 +54,11 @@ class AsyncOnlyContractTest extends TestCase
     {
         $this->assertSame(
             [
-                'Model/Queue/PageReindexProcessor.php',
+                'Model/Queue/HostReindexProcessor.php',
                 'Model/Queue/ReindexHandler.php',
                 'Model/Queue/ReindexProcessorInterface.php',
             ],
-            $this->usersOf(['ReindexProcessorInterface', 'PageReindexProcessor', 'ReindexHandler'])
+            $this->usersOf(['ReindexProcessorInterface', 'HostReindexProcessor', 'PageReindexProcessor', 'ReindexHandler'])
         );
     }
 
@@ -70,9 +70,9 @@ class AsyncOnlyContractTest extends TestCase
     public function testOnlyTheConsumerAndTheCliUseTheIndexWriters(): void
     {
         $this->assertSame(
-            ['Console/Command/ReindexCommand.php', 'Model/Queue/PageReindexProcessor.php'],
+            ['Console/Command/ReindexCommand.php', 'Model/Indexer/HostReindexer.php', 'Model/Queue/HostReindexProcessor.php'],
             $this->usersOf(
-                ['PageIndexer', 'CategoryIndexer', 'FullReindexer', 'IndexManager'],
+                ['PageIndexer', 'CategoryIndexer', 'FullReindexer', 'IndexManager', 'HostReindexer'],
                 [
                     'Model/Indexer/PageIndexer.php',
                     'Model/Indexer/CategoryIndexer.php',

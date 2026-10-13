@@ -19,7 +19,7 @@ use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
 use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\ProductBlockTextProvider;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
-use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
+use Thedevkitchen\CmsSearch\Model\Queue\HostReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
 use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
@@ -217,7 +217,7 @@ class DiPreferencesContractTest extends TestCase
     {
         $di = $this->di('etc/di.xml');
         $preference = $di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Model\\Queue\\ReindexProcessorInterface"]/@type');
-        $this->assertSame([PageReindexProcessor::class], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $preference));
+        $this->assertSame([HostReindexProcessor::class], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $preference));
         $logger = $di->xpath('//type[@name="Thedevkitchen\\CmsSearch\\Model\\Queue\\ReindexHandler"]/arguments/argument[@name="logger"]');
         $this->assertCount(1, $logger);
         $this->assertSame(self::LOGGER, ltrim((string) $logger[0], '\\'));
@@ -244,7 +244,7 @@ class DiPreferencesContractTest extends TestCase
             [ReindexPublisher::class],
             $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\ReindexPublisherInterface"]/@type'))
         );
-        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class, PageReindexProcessor::class, PublishPageReindex::class] as $class) {
+        foreach ([MessageSender::class, ReindexPublisher::class, ReindexHandler::class, FlushReindexMessagesPlugin::class, DocumentBuilder::class, HostReindexProcessor::class, PublishPageReindex::class] as $class) {
             $this->assertSame(
                 [self::LOGGER],
                 $names($di->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),
@@ -440,6 +440,35 @@ class DiPreferencesContractTest extends TestCase
             $this->assertSame(self::LOGGER, ltrim((string) $logger[0], '\\'), $class);
         }
     }
+    /**
+     * Plan 6 Task 12: the consumer chain (HostReindexProcessor -> AffectedHosts / HostReindexer) is autowired; only the
+     * processor's logger is configured (queue log). AffectedHosts reads the graph through the replaceable interface.
+     */
+    public function testTheConsumerChainIsAutowirable(): void
+    {
+        $di = $this->di('etc/di.xml');
+        foreach ([HostReindexProcessor::class, \Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts::class, \Thedevkitchen\CmsSearch\Model\Indexer\HostReindexer::class] as $class) {
+            $this->assertTrue(class_exists($class), "class not found: $class");
+            $configured = array_map(
+                static fn ($node): string => (string) $node,
+                $di->xpath('//type[@name="' . $class . '"]/arguments/argument/@name')
+            );
+            foreach ((new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [] as $param) {
+                $type = $param->getType();
+                $name = $type instanceof \ReflectionNamedType ? $type->getName() : '';
+                $this->assertTrue(
+                    $param->isOptional() || $this->exists($name) || in_array($param->getName(), $configured, true),
+                    "$class: constructor parameter \$" . $param->getName() . " ($name) cannot be injected"
+                );
+            }
+        }
+        $types = array_map(
+            static fn (\ReflectionParameter $p): string => (string) $p->getType(),
+            (new \ReflectionClass(\Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts::class))->getConstructor()->getParameters()
+        );
+        $this->assertContains(BlockReferenceResolverInterface::class, $types);
+    }
+
     /**
      * Plan 6 Task 10: the category indexing chain gets no <arguments> in di.xml, so every constructor parameter must be
      * autowirable (an existing class or interface, or optional); the full rebuild (behind the command's proxy) and the

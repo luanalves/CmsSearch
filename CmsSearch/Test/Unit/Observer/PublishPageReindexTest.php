@@ -118,7 +118,7 @@ class PublishPageReindexTest extends TestCase
 
     public function testASaveWithAnUnchangedUrlKeyAsksForNothingElse(): void
     {
-        // the consumer finds the siblings of the CURRENT key itself (PageReindexProcessor): no query here
+        // the consumer finds the siblings of the CURRENT key itself (AffectedHosts): no query here
         $this->recordPublished();
         $this->shadows->expects($this->never())->method('activeStoreZeroPagesNamed');
         $this->dispatch('cms_page_save_after', ['object' => $this->model(11, 'home', 'home')]);

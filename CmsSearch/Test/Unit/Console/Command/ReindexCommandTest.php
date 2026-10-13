@@ -18,6 +18,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Console\Command\ReindexCommand;
 use Thedevkitchen\CmsSearch\Exception\IndexingException;
+use Thedevkitchen\CmsSearch\Model\Indexer\CatalogIdSource;
 use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 
@@ -62,7 +63,7 @@ class ReindexCommandTest extends TestCase
                 return true;
             });
         }
-        return new CommandTester(new ReindexCommand($resource, $this->storeManager, $sender, $this->fullReindexer, $batchSize));
+        return new CommandTester(new ReindexCommand($resource, $this->storeManager, $sender, $this->fullReindexer, $this->createMock(CatalogIdSource::class), $batchSize));
     }
 
     public function testPublishesOnePageMessagePerPageInKeysetBatches(): void
@@ -82,7 +83,7 @@ class ReindexCommandTest extends TestCase
         $store->method('getId')->willReturn(3);
         $this->storeManager->method('getStore')->with(3)->willReturn($store);
         $tester = $this->tester([['1']]);
-        $this->assertSame(0, $tester->execute(['--store' => '3']));   // --entity defaults to "all" (= page)
+        $this->assertSame(0, $tester->execute(['--store' => '3']));   // --entity defaults to "all" (no category/product here)
         $this->assertSame([3], array_column($this->sent, 'store_id'));
         $this->assertStringContainsString('(store: 3)', $tester->getDisplay());
     }
@@ -90,7 +91,7 @@ class ReindexCommandTest extends TestCase
     /** @return array<string, array{0: string}> */
     public static function invalidEntities(): array
     {
-        return ['category (Plan 6)' => ['category'], 'plural' => ['pages'], 'empty' => ['']];
+        return ['block (no host of its own)' => ['block'], 'plural' => ['pages'], 'empty' => ['']];
     }
 
     #[DataProvider('invalidEntities')]
@@ -201,8 +202,8 @@ class ReindexCommandTest extends TestCase
     {
         $this->fullReindexer->expects($this->never())->method('rebuild');
         $tester = $this->tester([]);
-        $this->assertSame(1, $tester->execute(['--sync' => true, '--entity' => 'category']));
-        $this->assertStringContainsString('Unsupported --entity "category". Supported: page, all.', $tester->getDisplay());
+        $this->assertSame(1, $tester->execute(['--sync' => true, '--entity' => 'block']));
+        $this->assertStringContainsString('Unsupported --entity "block". Supported: page, category, product, all.', $tester->getDisplay());
     }
 
     public function testOldVersionsThatCouldNotBeDeletedAreNamed(): void
