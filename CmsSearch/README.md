@@ -216,6 +216,13 @@ Status: Tasks 1-9 committed (graph table, message types, directive parser, block
 - Identifiers (`{{block id="..."}}`) are matched like the database collation `utf8mb4_general_ci` (case and accents ignored, ß = s); two spellings the collation considers equal give one graph row (the insert merges them, keeping the smallest depth).
 - A block whose content cannot be extracted is skipped (no text, children not followed) and logged by kind and id only to `var/log/cmssearch_reindex.log`; the other blocks and hosts of the batch are processed.
 - Interface: `Api\BlockReferenceResolverInterface` (`refreshForHost`, `hostsForBlock`, `hostsForWidgetInstance`); consumers depend on it, not on the class.
+- Category documents (Task 10): `entity_type=category`, `_id` `category_<entity_id>`, `source_types` `["pdc"]`, same strict mapping v1 (no classification, `image` null). `title` = name, `text` = description text + the text of the blocks the category page publishes (capped like pages), `url` = store base URL + the store view's `url_rewrite` request path, or `catalog/category/view/id/<id>` when the store view has none. A category gets a document in store view S only when it is active in S, below S's root category (level >= 2) and a visitor who is NOT logged in may open it: `Model\Indexer\CategoryPermissionReader` mirrors the storefront's EE catalog permissions (disabled => public; the permission index row of group 0 for the website: deny hides, allow shows; no row => the "Allow Browsing Category" default, "specified groups" must list NOT LOGGED IN). `--sync` (FullReindexer) refreshes the graph of every page and category and rebuilds BOTH into the new index version, so the alias switch never drops categories.
+
+### Known limits (category documents)
+
+- B2B visibility rules (shared catalog, company, customer group) are NOT considered (D1). A shared catalog deny counts only after the B2B consumer `sharedCatalogUpdateCategoryPermissions` has copied it into the catalog permissions, and then only from the next `--sync`: a later application of shared-catalog denies requires `bin/magento thedevkitchen:cmssearch:reindex --sync`.
+- Only the NOT LOGGED IN group is checked: a category that guests may open but one logged-in group may not is indexed (and found by that group).
+- Category permission changes (category permissions, "Allow Browsing Category" settings, shared catalog assignments) publish no reindex message: the documents catch up on the next `--sync`.
 
 ### Release gate and deployment order (Plan 6)
 

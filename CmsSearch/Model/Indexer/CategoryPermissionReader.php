@@ -6,7 +6,6 @@ namespace Thedevkitchen\CmsSearch\Model\Indexer;
 
 use Magento\CatalogPermissions\Model\ResourceModel\Permission\Index as PermissionIndex;
 use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Framework\App\ResourceConnection;
 use Magento\Store\Model\ScopeInterface;
 
 /**
@@ -17,17 +16,16 @@ use Magento\Store\Model\ScopeInterface;
  *   - the guest row (customer group 0) of the website in the permission index decides: deny (-2) hides, allow (-1)
  *     shows; without a row (or "use parent" left after inheritance) the config default decides: "Yes, for everyone",
  *     "No", or "Yes, for specified customer groups" that must list group 0.
- * B2B shared catalogs: when the shared catalog is active on the website, a guest DENY recorded in
- * sharedcatalog_category_permissions (website-specific or all websites) also hides the category, even before the
- * shared catalog's asynchronous consumer copies it into the catalog permissions (conservative: never index what the
- * merchant restricted). Only the guest group is checked: a category hidden from one logged-in group but public is
- * indexed (known limit). Two queries at most per call (one per source), only when the feature is on.
+ * B2B visibility rules (shared catalog, company, customer group) are OUT OF SCOPE (D1): a shared catalog deny counts
+ * only once its consumer has copied it into the catalog permissions (then it is in the index read here, after the next
+ * --sync); a deny still waiting in sharedcatalog_category_permissions is not what the storefront shows and is ignored.
+ * Only the guest group is checked: a category hidden from one logged-in group but public is indexed (known limit).
+ * One query per call, only when catalog permissions are enabled.
  */
 class CategoryPermissionReader
 {
     public const XML_PATH_ENABLED = 'catalog/magento_catalogpermissions/enabled';
     public const XML_PATH_GRANT_CATEGORY_VIEW = 'catalog/magento_catalogpermissions/grant_catalog_category_view';
-    public const XML_PATH_SHARED_CATALOG_ACTIVE = 'btob/website_configuration/sharedcatalog_active';
     /** Magento\Customer\Api\Data\GroupInterface::NOT_LOGGED_IN_ID */
     public const GUEST_GROUP_ID = 0;
     /** Magento\CatalogPermissions\Model\Permission::PERMISSION_ALLOW / PERMISSION_DENY */
@@ -39,8 +37,7 @@ class CategoryPermissionReader
 
     public function __construct(
         private readonly ScopeConfigInterface $scopeConfig,
-        private readonly PermissionIndex $permissionIndex,
-        private readonly ResourceConnection $resource
+        private readonly PermissionIndex $permissionIndex
     ) {
     }
 
@@ -57,12 +54,8 @@ class CategoryPermissionReader
         }
         $byDefault = $this->guestsMayBrowseByDefault($storeId);
         $rows = $this->permissionIndex->getIndexForCategory($categoryIds, self::GUEST_GROUP_ID, $websiteId);
-        $sharedDenied = array_flip($this->sharedCatalogDenials($categoryIds, $websiteId));
         $visible = [];
         foreach ($categoryIds as $categoryId) {
-            if (isset($sharedDenied[$categoryId])) {
-                continue;
-            }
             $grant = $rows[$categoryId]['grant_catalog_category_view'] ?? null;
             $grant = $grant === null ? 0 : (int) $grant;
             $allowed = $grant === self::PERMISSION_DENY ? false : ($grant === self::PERMISSION_ALLOW || $byDefault);
@@ -85,25 +78,5 @@ class CategoryPermissionReader
             return $groups !== '' && in_array((string) self::GUEST_GROUP_ID, array_map('trim', explode(',', $groups)), true);
         }
         return $mode === self::GRANT_ALL;
-    }
-
-    /**
-     * @param list<int> $categoryIds
-     * @return list<int>
-     */
-    private function sharedCatalogDenials(array $categoryIds, int $websiteId): array
-    {
-        if (!$this->scopeConfig->isSetFlag(self::XML_PATH_SHARED_CATALOG_ACTIVE, ScopeInterface::SCOPE_WEBSITE, $websiteId)) {
-            return [];
-        }
-        $connection = $this->resource->getConnection();
-        return array_map('intval', $connection->fetchCol(
-            $connection->select()->distinct()
-                ->from($this->resource->getTableName('sharedcatalog_category_permissions'), ['category_id'])
-                ->where('category_id IN (?)', $categoryIds)
-                ->where('customer_group_id = ?', self::GUEST_GROUP_ID)
-                ->where('permission = ?', self::PERMISSION_DENY)
-                ->where('website_id IS NULL OR website_id = ?', $websiteId)
-        ));
     }
 }
