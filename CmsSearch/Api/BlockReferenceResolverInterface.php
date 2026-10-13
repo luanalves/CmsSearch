@@ -20,4 +20,10 @@ interface BlockReferenceResolverInterface
      *         last refresh (a CMS block is also found through its current identifier)
      */
     public function hostsForBlock(string $kind, int $blockId): array;
+
+    /**
+     * @return list<array{store_id: int, host_type: string, host_id: int}> hosts a widget instance published on at
+     *         their last refresh (also after the instance was deleted or moved: the BEFORE side of a widget message)
+     */
+    public function hostsForWidgetInstance(int $instanceId): array;
 }

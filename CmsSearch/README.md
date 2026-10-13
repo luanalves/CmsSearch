@@ -11,7 +11,7 @@ Indexes CMS content in OpenSearch and shows it in tabs on the search result page
 - Plan 5 delivered: search UI - tab bar with counters on `/catalogsearch/result/` (Products, Categories when category documents exist, one tab per active content type), cards with pagination and a hierarchical classification filter on CMS tabs, graceful fallbacks, six themes.
 - i18n: `en_US.csv` and `pt_BR.csv` cover Plans 1-5 (Plan 4 adds no translatable phrase; console descriptions and log lines are not translated). Test-only phrases are not in the CSVs.
 
-Not delivered yet: block references and enrichment (Plan 6), hardening/release (Plan 7).
+Not delivered yet: block references and enrichment (Plan 6, in progress: see its section), hardening/release (Plan 7).
 
 ## Content types
 
@@ -205,6 +205,27 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 
 - Plan 6 adds block text to `text` from `ExtractedContent::getDirectives()` (widget instances of page group `all_pages` are NOT indexed on any host: user decision), fills `segment_ids`, and adds category documents (`entity_type=category`, `_id` `category_<id>`) and new entity types to `AffectedPages`. Any new field needs `IndexDefinition` + `MAPPING_VERSION` + the upgrade path above. Documents already carry `entity_type` (`page`), `content_type_code` and the classification fields for aggregations.
 
+## Block references and enrichment (Plan 6, in progress)
+
+Status: Tasks 1-9 committed (graph table, message types, directive parser, block reader, widget instance resolver, host sources, reference graph, block text, page documents carrying block text). Not wired into the consumer yet: until Tasks 10-13 ship, nothing in production refreshes the graph, so live page documents carry no block text.
+
+- What a page document gets: `text` = content heading + page text + the text of the CMS Blocks and Dynamic Blocks the page publishes in that store view (nested up to 5 levels, each block once), cut at 65 536 characters as a whole (page text first, so block text is cut first). No new field: the strict mapping stays at version 1. Blocks never get documents of their own (D2).
+- Placements (user decisions): widget instances of page group `all_pages`, and `pages` with the `default` handle, are site chrome and are indexed on NO host. Placements on ALL hosts of a type (`all_products`, `<type>_products`, `anchor_categories`/`notanchor_categories` with "all", `cms_page_view`, `catalog_category_view`...) ARE indexed as they are.
+- Excluded Dynamic Blocks (no text, not followed, graph row kept): restricted by a Customer Segment (D7), and also, BEYOND the literal D7, linked to a cart or catalog price rule (`magento_banner_salesrule` / `magento_banner_catalogrule`). The storefront shows those only when the rule applies to the visitor (`Magento\Banner\Model\Banner\Data::getFixedBanners`), and they may show coupon codes. Rotator display modes (`salesrule`, `catalogrule`) publish nothing; an empty `display_mode` means `fixed` and the comparison is exact (case-sensitive), as on the storefront.
+- `segment_ids` on a page document = the segment ids of the EXCLUDED segment-restricted Dynamic Blocks of that page. It is NOT an access filter: the page is public and its indexed text holds no restricted content, so the search UI must NOT filter pages by `segment_ids` (it is kept for a possible future option B).
+- Identifiers (`{{block id="..."}}`) are matched like the database collation `utf8mb4_general_ci` (case and accents ignored, ß = s); two spellings the collation considers equal give one graph row (the insert merges them, keeping the smallest depth).
+- A block whose content cannot be extracted is skipped (no text, children not followed) and logged by kind and id only to `var/log/cmssearch_reindex.log`; the other blocks and hosts of the batch are processed.
+- Interface: `Api\BlockReferenceResolverInterface` (`refreshForHost`, `hostsForBlock`, `hostsForWidgetInstance`); consumers depend on it, not on the class.
+
+### Release gate and deployment order (Plan 6)
+
+- Ship Tasks 10-13 TOGETHER (full rebuild with the graph, product block text, `HostReindexProcessor`, the new publishers): a partial release would publish messages the processor cannot handle or index without refreshing the graph.
+- Order: stop the consumers on every node -> deploy the code (`setup:upgrade --keep-generated`, cache flush; production: `setup:di:compile`) -> restart the consumers on EVERY node -> `bin/magento thedevkitchen:cmssearch:reindex --sync` (pages and categories) and `--entity=product` (publishes product messages) -> only then enable the producers (block, Dynamic Block, widget instance, product and category hooks). A message of a new entity type that reaches a node still running old code is rejected as invalid and goes to the DLQ: after the deploy, replay through the reindex command and purge the DLQ.
+
+### Runbook (Plan 6)
+
+- Changes to `design/theme/theme_id` (which widget instances apply to a store view), a store group's root category, or `web/default/cms_home_page` publish no message: the widget rows of the graph stay stale until `bin/magento thedevkitchen:cmssearch:reindex --sync`.
+
 ## Search result page (Plan 5)
 
 ### Mechanism (no controller plugin)
@@ -276,14 +297,14 @@ The consumer never waits for an OpenSearch refresh. A change is searchable at th
 
 ### Plan 6/7 handoff
 
-- Plan 6: index category documents (`entity_type=category`, `_id` `category_<id>`, `title`, `summary`, `url`, `image`, `store_view_id`, `website_id`); the Categories tab and its cards appear automatically (no facet, D4). Respect EE catalog permissions / shared catalogs when indexing categories. Fields filled later (`segment_ids`): the segment filter is `missing OR intersects the customer's segments` at query time (Varnish impact to decide, see Pending items). Keep escaping title/text/summary and the http(s) allow-list for URLs and images. `FullReindexer --sync` must rebuild every entity type or the swap drops them.
+- Plan 6: index category documents (`entity_type=category`, `_id` `category_<id>`, `title`, `summary`, `url`, `image`, `store_view_id`, `website_id`); the Categories tab and its cards appear automatically (no facet, D4). Respect EE catalog permissions / shared catalogs when indexing categories. `segment_ids` (filled by Plan 6) lists the segments of the Dynamic Blocks that were EXCLUDED from a page's text; it is NOT an access filter: the page itself is public, so the search must NOT filter pages by it (see "Block references and enrichment"). Keep escaping title/text/summary and the http(s) allow-list for URLs and images. `FullReindexer --sync` must rebuild every entity type or the swap drops them.
 - Follow-ups for Plans 6/7: a single-render guard for the pre-rendered `search.result` (nothing prevents a third-party layout from rendering it twice); `ResetAfterRequestInterface` for `SearchState` and the memoised readers (long-running workers); the module issues one OpenSearch request on every search page view even with zero active content types and zero category documents (skip it when nothing but Products can exist); card images with `http://` URLs are accepted by the allow-list and cause mixed content on https stores (restrict to https or the media base URL); strip Unicode `Cf` (format) characters from `q` before querying.
 - Request-scoped state: `SearchState` is a shared per-request service; if a long-running process ever reuses it (consumers, GraphQL), reset it between requests.
 - Plan 7: Varnish/`full_page` checks of the URLs above, release notes for the environment defects and logrotate for `cmssearch_search.log`.
 
 ## Pending items (backlog)
 
-- Dynamic Blocks restricted by a Customer Segment are excluded from the index in v1 (spec option A). The segment ids will be stored so option B (filter by the logged-in customer's segments at query time) can be enabled later; that needs a decision on the Varnish impact (customer-dependent results) and on cart/catalog price rules tied to Dynamic Blocks.
+- Dynamic Blocks restricted by a Customer Segment are excluded from the index in v1 (spec option A). The segment ids will be stored so option B (filter by the logged-in customer's segments at query time) can be enabled later; that needs a decision on the Varnish impact (customer-dependent results). Dynamic Blocks linked to cart/catalog price rules are excluded the same way (Plan 6 review decision).
 
 ## Tests
 

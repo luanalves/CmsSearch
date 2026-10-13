@@ -370,6 +370,10 @@ class DiPreferencesContractTest extends TestCase
             $this->assertSame([], $this->di($file)->xpath($xpath), "$file must not override the graph resolver");
         }
         $this->assertTrue(is_a(BlockReferenceResolver::class, BlockReferenceResolverInterface::class, true));
+        // consumers (AffectedHosts) depend on the interface only: the reverse lookups are part of it
+        $methods = array_map(static fn (\ReflectionMethod $m): string => $m->getName(), (new \ReflectionClass(BlockReferenceResolverInterface::class))->getMethods());
+        sort($methods);
+        $this->assertSame(['hostsForBlock', 'hostsForWidgetInstance', 'refreshForHost'], $methods);
     }
 
     /** Skipped malformed blocks are logged to the queue log (not the core system log). */
