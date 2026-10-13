@@ -151,7 +151,7 @@ class AffectedHosts
     /**
      * Each host once per message (first occurrence), in chunks of at most $chunkSize. The dedupe map holds ONE int per
      * host and store view (host ids <= 2^32, store ids <= 2^16), never the host rows: a block placed on every product
-     * of a large catalog stays bounded in memory (README "Known limits").
+     * of a large catalog stays bounded in memory (TECHNICAL-REFERENCE.md "Known limits").
      *
      * @param iterable<array{host_type: string, host_id: int, store_id: ?int}> $hosts
      * @return \Generator<int, list<array{host_type: string, host_id: int, store_id: ?int}>>

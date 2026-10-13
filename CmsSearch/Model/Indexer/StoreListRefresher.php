@@ -17,7 +17,7 @@ use Psr\Log\LoggerInterface;
  * reinitialised only when they differ (a store view or store group was added, deleted, moved, (de)activated or got
  * another root category since the process started). reinitStores() also cleans the store/website/group cache tags and
  * reloads the configuration, so it must never run per message. Values that are not part of this list (base URLs, home
- * page, locale) are baked into documents at index time and still need `--sync` (README runbook).
+ * page, locale) are baked into documents at index time and still need `--sync` (TECHNICAL-REFERENCE.md runbook).
  * Convergence: with `app:config:dump scopes` the file source overrides the database, so the in-memory list can stay
  * different from the database after reinitStores(). The refresher therefore remembers the fingerprint (hash of the
  * database lines) it last handled, in the process AND in the Magento cache (key FINGERPRINT_KEY, no tags): cron

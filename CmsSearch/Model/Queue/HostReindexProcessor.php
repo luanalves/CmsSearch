@@ -25,7 +25,7 @@ use Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts;
  * - Hosts are processed chunk by chunk as AffectedHosts streams them (at most 1000 hosts per chunk), for every
  *   entity type: page/content type/term messages through keyset page ids, block and widget instance messages through
  *   keyset pages of the reference graph with one int per host and store view kept for deduplication. A block placed
- *   on every product is bounded in memory; its time stays linear in the number of hosts (README known limits).
+ *   on every product is bounded in memory; its time stays linear in the number of hosts (TECHNICAL-REFERENCE.md known limits).
  * - A missing entity or store view is a success (its rows/documents are removed or never existed).
  *   InvalidReindexMessageException (unsupported entity type, from AffectedHosts) is permanent; every other exception
  *   propagates unchanged and is retried by ReindexHandler (the work is idempotent).

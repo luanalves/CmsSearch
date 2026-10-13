@@ -3,7 +3,7 @@
         xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/topology.xsd">
     <!-- Exclusive to this module (D10). The binding arguments become the main queue's queue_declare arguments:
          a rejected message (requeue=false) is dead-lettered into thedevkitchen.cmssearch.reindex.dlq.
-         RabbitMQ refuses to redeclare an existing queue with other arguments: see README before changing them. -->
+         RabbitMQ refuses to redeclare an existing queue with other arguments: see TECHNICAL-REFERENCE.md before changing them. -->
     <exchange name="thedevkitchen.cmssearch" type="topic" connection="amqp">
         <binding id="ThedevkitchenCmsSearchReindexBinding" topic="thedevkitchen.cmssearch.reindex"
                  destinationType="queue" destination="thedevkitchen.cmssearch.reindex">
