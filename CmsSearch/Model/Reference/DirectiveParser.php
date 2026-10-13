@@ -86,7 +86,10 @@ class DirectiveParser
      */
     public function dynamicBlockRefs(string $bannerIds, string $displayMode): array
     {
-        if (strtolower(trim($displayMode)) !== self::FIXED_MODE) {
+        // As the storefront: Banner widget getDisplayMode() turns an empty value into "fixed", and banner.js picks
+        // the list by exact key (items[displayMode]): case-sensitive, not trimmed.
+        $mode = in_array($displayMode, ['', '0'], true) ? self::FIXED_MODE : $displayMode;
+        if ($mode !== self::FIXED_MODE) {
             return [];
         }
         $refs = [];

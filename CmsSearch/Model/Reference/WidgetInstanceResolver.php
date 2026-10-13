@@ -51,8 +51,10 @@ class WidgetInstanceResolver
         if ($instance->getType() === DirectiveParser::DYNAMIC_BLOCK_WIDGET) {
             $ids = $parameters['banner_ids'] ?? '';
             $ids = is_array($ids) ? implode(',', array_filter($ids, 'is_scalar')) : (is_scalar($ids) ? (string) $ids : '');
-            $mode = $parameters['display_mode'] ?? DirectiveParser::FIXED_MODE;
-            return $this->directiveParser->dynamicBlockRefs($ids, is_scalar($mode) ? (string) $mode : '');
+            $mode = $parameters['display_mode'] ?? '';
+            // empty (also false/[]) = fixed like the storefront; any other non-scalar value is no display mode
+            $mode = is_scalar($mode) ? (string) $mode : (empty($mode) ? '' : 'invalid');
+            return $this->directiveParser->dynamicBlockRefs($ids, $mode);
         }
         return [];
     }

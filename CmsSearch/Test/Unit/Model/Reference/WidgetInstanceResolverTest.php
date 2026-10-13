@@ -186,6 +186,12 @@ class WidgetInstanceResolverTest extends TestCase
         $this->assertSame(['dynamic_block#4', 'dynamic_block#5'], $keys(self::instance(self::BANNER, ['display_mode' => 'fixed', 'banner_ids' => '4,5'])));
         $this->assertSame(['dynamic_block#6'], $keys(self::instance(self::BANNER, ['banner_ids' => ['6', 'x']])));
         $this->assertSame([], $keys(self::instance(self::BANNER, ['display_mode' => 'catalogrule', 'banner_ids' => '4'])));
+        // storefront: an empty display_mode is fixed (Banner::getDisplayMode), the comparison is case-sensitive
+        $this->assertSame(['dynamic_block#4'], $keys(self::instance(self::BANNER, ['display_mode' => '', 'banner_ids' => '4'])));
+        $this->assertSame(['dynamic_block#4'], $keys(self::instance(self::BANNER, ['display_mode' => null, 'banner_ids' => '4'])));
+        $this->assertSame(['dynamic_block#4'], $keys(self::instance(self::BANNER, ['banner_ids' => '4'])));
+        $this->assertSame([], $keys(self::instance(self::BANNER, ['display_mode' => 'FIXED', 'banner_ids' => '4'])));
+        $this->assertSame([], $keys(self::instance(self::BANNER, ['display_mode' => ['fixed'], 'banner_ids' => '4'])));
         $this->assertSame([], $keys(self::instance('Magento\\CatalogWidget\\Block\\Product\\ProductsList', ['block_id' => '3'])));
     }
 
