@@ -14,6 +14,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ReindexMessageInterface;
 use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
+use Thedevkitchen\CmsSearch\Model\Indexer\PageIdKeysetTrait;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
 
@@ -29,6 +30,8 @@ use Thedevkitchen\CmsSearch\Model\Queue\ReindexMessage;
  */
 class ReindexCommand extends Command
 {
+    use PageIdKeysetTrait;
+
     public const NAME = 'thedevkitchen:cmssearch:reindex';
     private const SUPPORTED_ENTITIES = ['page', 'all'];
 
@@ -156,20 +159,5 @@ class ReindexCommand extends Command
             $output->writeln('Dropped the index(es) of deleted store views: ' . implode(', ', $result['orphans']) . '.');
         }
         return Cli::RETURN_SUCCESS;
-    }
-
-    /**
-     * @return int[] next batch of distinct page ids (keyset pagination; page_id is stable under Staging)
-     */
-    private function nextPageIds(int $afterId): array
-    {
-        $connection = $this->resource->getConnection();
-        $select = $connection->select()
-            ->distinct()
-            ->from($this->resource->getTableName('cms_page'), 'page_id')
-            ->where('page_id > ?', $afterId)
-            ->order('page_id ASC')
-            ->limit($this->batchSize);
-        return array_map('intval', $connection->fetchCol($select));
     }
 }

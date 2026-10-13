@@ -225,6 +225,26 @@ class FullReindexerTest extends TestCase
         $this->assertContains('switch idx_1_v2', $this->calls);
     }
 
+    public function testALockBackendFailureOfALaterStoreViewStillNamesTheStoreViewsAlreadyRebuilt(): void
+    {
+        $this->stores->method('all')->willReturn([$this->store(1), $this->store(2)]);
+        $this->pageIndexer->method('reindex')->willReturn(['upserted' => 1, 'deleted' => 0]);
+        $this->locks = $this->createMock(LockManagerInterface::class);
+        $this->locks->method('lock')->willReturnCallback(static function (string $name): bool {
+            if (str_ends_with($name, '_2')) {
+                throw new \RuntimeException('lock backend gone');
+            }
+            return true;
+        });
+        $this->indexManager->expects($this->never())->method('dropOrphans');
+        try {
+            $this->reindexer($this->resourceReturning([], [['5']]))->rebuild();
+            $this->fail('IndexingException expected');
+        } catch (IndexingException $exception) {
+            $this->assertSame('lock backend gone (store view(s) already rebuilt: 1)', $exception->getMessage());
+        }
+    }
+
     public function testAFailingCleanupKeepsTheOriginalError(): void
     {
         $this->stores->method('get')->willReturn($this->store(2));

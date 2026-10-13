@@ -29,6 +29,8 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
  */
 class FullReindexer
 {
+    use PageIdKeysetTrait;
+
     public const LOCK_PREFIX = 'thedevkitchen_cmssearch_rebuild_';
 
     public function __construct(
@@ -65,7 +67,7 @@ class FullReindexer
         foreach ($stores as $store) {
             try {
                 $result['stores'][] = $this->rebuildLocked($store, $progress);
-            } catch (IndexingException $exception) {
+            } catch (\Throwable $exception) {
                 if ($result['stores'] === []) {
                     throw $exception;
                 }
@@ -73,7 +75,7 @@ class FullReindexer
                     '%s (store view(s) already rebuilt: %s)',
                     $exception->getMessage(),
                     implode(', ', array_column($result['stores'], 'store_id'))
-                ));
+                ), 0, $exception);
             }
         }
         if ($storeId === null) {
@@ -168,20 +170,5 @@ class FullReindexer
         if ($progress !== null) {
             $progress($line);
         }
-    }
-
-    /**
-     * @return int[] next batch of distinct page ids (keyset pagination; page_id is stable under Staging)
-     */
-    private function nextPageIds(int $afterId): array
-    {
-        $connection = $this->resource->getConnection();
-        $select = $connection->select()
-            ->distinct()
-            ->from($this->resource->getTableName('cms_page'), 'page_id')
-            ->where('page_id > ?', $afterId)
-            ->order('page_id ASC')
-            ->limit($this->batchSize);
-        return array_map('intval', $connection->fetchCol($select));
     }
 }

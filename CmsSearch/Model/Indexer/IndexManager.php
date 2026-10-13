@@ -25,9 +25,10 @@ use Thedevkitchen\CmsSearch\Model\Indexer\Engine\ClientProvider;
  * A transport failure (dead node, timeout, connection error) is retried once with a fresh client.
  *
  * Mapping upgrades (IndexDefinition::MAPPING_VERSION): ensureAlias() only WARNS about an index with another mapping
- * version or locale, it never recreates one. Path: stop the consumers; deploy the code with MAPPING_VERSION + 1; for
- * purely additive properties a future ensureMapping() would PUT {alias}/_mapping with the new properties, any other
- * change needs `bin/magento thedevkitchen:cmssearch:reindex --sync`; start the consumers; publish the page reindex
+ * version or locale, it never recreates one. Path: stop the consumers; deploy the code with MAPPING_VERSION + 1;
+ * ensureMapping() is NOT implemented, use `bin/magento thedevkitchen:cmssearch:reindex --sync` (a manual
+ * `PUT {alias}/_mapping` for an additive property must also send the complete `_meta`: module, mapping_version,
+ * store_id, locale); start the consumers; publish the page reindex
  * (`thedevkitchen:cmssearch:reindex --entity=page`).
  */
 class IndexManager
