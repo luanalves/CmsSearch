@@ -149,4 +149,15 @@
             </argument>
         </arguments>
     </virtualType>
+    <!-- Shared (the default): one decision and one CMS query per request for the tab bar, the observer and the cards. -->
+    <type name="Thedevkitchen\CmsSearch\Model\Search\SearchState">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Search\Log\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Thedevkitchen\CmsSearch\Model\Search\ProductCount">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Search\Log\Logger</argument>
+        </arguments>
+    </type>
 </config>

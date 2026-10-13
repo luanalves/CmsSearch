@@ -20,6 +20,8 @@ use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
 use Thedevkitchen\CmsSearch\Model\Search\CmsSearchQuery;
+use Thedevkitchen\CmsSearch\Model\Search\ProductCount;
+use Thedevkitchen\CmsSearch\Model\Search\SearchState;
 use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied;
 use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
@@ -282,6 +284,30 @@ class DiPreferencesContractTest extends TestCase
         $this->assertSame(\Magento\Framework\Logger\Handler\Base::class, $this->virtualTypes()[self::SEARCH_LOGGER_HANDLER] ?? null);
         $file = $di->xpath('//virtualType[@name="' . self::SEARCH_LOGGER_HANDLER . '"]/arguments/argument[@name="fileName"]');
         $this->assertSame(['/var/log/cmssearch_search.log'], array_map('strval', $file));
+    }
+
+    /**
+     * Plan 5 Task 6: the per-request state and the products count log to the search file; the state must stay a
+     * shared (request-scoped) instance so the tab bar, the observer and the cards see ONE decision and ONE CMS query.
+     */
+    public function testTheSearchStateIsSharedAndTheSearchServicesLogToTheSearchFile(): void
+    {
+        $names = static fn (array $nodes): array => array_map(static fn ($node): string => ltrim((string) $node, '\\'), $nodes);
+        $global = $this->di('etc/di.xml');
+        foreach ([SearchState::class, ProductCount::class] as $class) {
+            $this->assertSame(
+                [self::SEARCH_LOGGER],
+                $names($global->xpath('//type[@name="' . $class . '"]/arguments/argument[@name="logger"]')),
+                "$class must log to var/log/cmssearch_search.log"
+            );
+        }
+        foreach (self::files() as [$file]) {
+            $this->assertSame(
+                [],
+                $this->di($file)->xpath('//type[@name="' . SearchState::class . '" and @shared="false"]'),
+                "$file must not make SearchState a per-call instance"
+            );
+        }
     }
 
     public function testOurPostProcessorIsRegisteredOnTheStagingApplier(): void
