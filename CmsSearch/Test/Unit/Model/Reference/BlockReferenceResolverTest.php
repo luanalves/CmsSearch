@@ -189,6 +189,14 @@ class BlockReferenceResolverTest extends TestCase
         $this->assertSame(['10 dynamic_block 3 - content 0 0 4,7'], $this->rows());
     }
 
+    public function testSpellingsTheCollationConsidersEqualGiveOneRow(): void
+    {
+        $this->hosts->method('read')->willReturn([10 => self::page(10, '{{block id="cafe"}}{{block id="Café"}}{{block id="Straße"}}{{block id="strase"}}')]);
+        $this->blocksFrom(['block@cafe' => self::cms(8, 'Café', '<p>c</p>')], 1);
+        $this->resolver()->refreshForHosts('page', [10], 2);
+        $this->assertSame(['10 block 8 cafe content 0 0 -', '10 block 0 Straße content 0 0 -'], $this->rows());
+    }
+
     public function testARuleRestrictedDynamicBlockKeepsItsRowAndIsNotFollowed(): void
     {
         $this->hosts->method('read')->willReturn([10 => self::page(10, '{{widget type="Magento\Banner\Block\Widget\Banner" banner_ids="3"}}')]);

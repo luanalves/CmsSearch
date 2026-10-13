@@ -6,6 +6,7 @@ namespace Thedevkitchen\CmsSearch\Model\Reference;
 
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
+use Magento\Framework\DB\Sql\Expression;
 use Thedevkitchen\CmsSearch\Model\Db\Tables;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockRef;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
@@ -50,9 +51,13 @@ class ReferenceStore
         try {
             $connection->delete($table, ['store_id = ?' => $storeId, 'host_type = ?' => $hostType, 'host_id IN (?)' => $hostIds]);
             foreach (array_chunk($rows, $this->insertChunkSize) as $chunk) {
-                $connection->insertMultiple(
+                // The unique key compares block_identifier with utf8mb4_general_ci: two spellings the collation
+                // considers equal (that BlockRef::key() did not fold) are merged, keeping the first row and the
+                // smallest depth, instead of a duplicate-key error that would roll back the whole refresh.
+                $connection->insertOnDuplicate(
                     $table,
-                    array_map(static fn (array $row): array => ['store_id' => $storeId, 'host_type' => $hostType] + $row, $chunk)
+                    array_map(static fn (array $row): array => ['store_id' => $storeId, 'host_type' => $hostType] + $row, $chunk),
+                    ['depth' => new Expression('LEAST(`depth`, VALUES(`depth`))')]
                 );
             }
             $connection->commit();

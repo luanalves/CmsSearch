@@ -49,7 +49,7 @@ class BlockReader
             if ($ref->getKind() === BlockRef::KIND_DYNAMIC_BLOCK) {
                 $bannerIds[$ref->getId()] = true;
             } elseif ($ref->isByIdentifier()) {
-                $identifiers[mb_strtolower($ref->getIdentifier())] ??= $ref->getIdentifier();
+                $identifiers[BlockRef::foldIdentifier($ref->getIdentifier())] ??= $ref->getIdentifier();
             } else {
                 $ids[$ref->getId()] = true;
             }

@@ -128,6 +128,12 @@ class DirectiveParserTest extends TestCase
     public function testBlockRefAcceptsOnlyOneWayToNameABlock(): void
     {
         $this->assertSame('block@footer', (new BlockRef(BlockRef::KIND_BLOCK, 0, 'FOOTER'))->key());
+        // utf8mb4_general_ci folding: accents and case ignored, ß = s (one character), æ/ø kept
+        $this->assertSame('block@cafe', (new BlockRef(BlockRef::KIND_BLOCK, 0, 'Café'))->key());
+        $this->assertSame('block@strase', (new BlockRef(BlockRef::KIND_BLOCK, 0, 'STRAẞE'))->key());
+        $this->assertSame('block@strase', (new BlockRef(BlockRef::KIND_BLOCK, 0, 'Straße'))->key());
+        $this->assertNotSame((new BlockRef(BlockRef::KIND_BLOCK, 0, 'strasse'))->key(), (new BlockRef(BlockRef::KIND_BLOCK, 0, 'Straße'))->key());
+        $this->assertSame('block@æø-x', (new BlockRef(BlockRef::KIND_BLOCK, 0, 'ÆØ-X'))->key());
         $this->assertSame('FOOTER', (new BlockRef(BlockRef::KIND_BLOCK, 0, 'FOOTER'))->getIdentifier());
         $this->assertTrue((new BlockRef(BlockRef::KIND_BLOCK, 0, 'x'))->isByIdentifier());
         $this->assertFalse((new BlockRef(BlockRef::KIND_DYNAMIC_BLOCK, 3))->isByIdentifier());

@@ -34,8 +34,12 @@ class ReferenceStoreTest extends TestCase
                 $calls[] = 'delete';
                 return 3;
             });
-        $this->connection->expects($this->once())->method('insertMultiple')
-            ->with(self::TABLE, [['store_id' => 2, 'host_type' => 'page'] + self::row(5, 7)])
+        $this->connection->expects($this->once())->method('insertOnDuplicate')
+            ->with(
+                self::TABLE,
+                [['store_id' => 2, 'host_type' => 'page'] + self::row(5, 7)],
+                ['depth' => new \Magento\Framework\DB\Sql\Expression('LEAST(`depth`, VALUES(`depth`))')]
+            )
             ->willReturnCallback(function () use (&$calls) {
                 $calls[] = 'insert';
                 return 1;
@@ -49,12 +53,29 @@ class ReferenceStoreTest extends TestCase
         $this->assertSame(['begin', 'delete', 'insert', 'commit'], $calls);
     }
 
+    public function testRowsTheCollationConsidersEqualKeepTheFirstAndTheSmallestDepth(): void
+    {
+        // the unique key compares block_identifier with utf8mb4_general_ci (accent- and case-insensitive): two spellings
+        // of one identifier must not raise a duplicate-key error that would roll back the whole batch refresh
+        $update = null;
+        $store = new ReferenceStore($this->db());
+        $this->connection->expects($this->once())->method('insertOnDuplicate')
+            ->willReturnCallback(function (string $table, array $rows, array $fields) use (&$update): int {
+                $update = $fields;
+                return count($rows);
+            });
+        $this->connection->expects($this->never())->method('insertMultiple');
+        $store->replace('page', [5], 2, [self::row(5, 7)]);
+        $this->assertSame(['depth'], array_keys($update), 'only the depth is merged; identifier spelling and segments of the first row stay');
+        $this->assertSame('LEAST(`depth`, VALUES(`depth`))', (string) $update['depth']);
+    }
+
     public function testAHostWithoutReferencesOnlyLosesItsOldRows(): void
     {
         $store = new ReferenceStore($this->db());
         $this->connection->expects($this->once())->method('beginTransaction');
         $this->connection->expects($this->once())->method('delete');
-        $this->connection->expects($this->never())->method('insertMultiple');
+        $this->connection->expects($this->never())->method('insertOnDuplicate');
         $this->connection->expects($this->once())->method('commit');
         $store->replace('category', [9], 1, []);
         $store->replace('category', [], 1, []); // nothing to do, no transaction
@@ -65,7 +86,7 @@ class ReferenceStoreTest extends TestCase
         $store = new ReferenceStore($this->db());
         $this->connection->expects($this->once())->method('beginTransaction');
         $this->connection->expects($this->once())->method('delete');
-        $this->connection->method('insertMultiple')->willThrowException(new \RuntimeException('deadlock'));
+        $this->connection->method('insertOnDuplicate')->willThrowException(new \RuntimeException('deadlock'));
         $this->connection->expects($this->once())->method('rollBack');
         $this->connection->expects($this->never())->method('commit');
         $this->expectExceptionMessage('deadlock');
@@ -77,7 +98,7 @@ class ReferenceStoreTest extends TestCase
         $store = new ReferenceStore($this->db());
         $this->connection->expects($this->once())->method('beginTransaction');
         $this->connection->method('delete')->willThrowException(new \RuntimeException('lock wait'));
-        $this->connection->expects($this->never())->method('insertMultiple');
+        $this->connection->expects($this->never())->method('insertOnDuplicate');
         $this->connection->expects($this->once())->method('rollBack');
         $this->connection->expects($this->never())->method('commit');
         $this->expectExceptionMessage('lock wait');
@@ -96,7 +117,7 @@ class ReferenceStoreTest extends TestCase
             $calls[] = 'delete';
             return 0;
         });
-        $this->connection->expects($this->exactly(3))->method('insertMultiple')
+        $this->connection->expects($this->exactly(3))->method('insertOnDuplicate')
             ->willReturnCallback(function (string $table, array $rows) use (&$calls) {
                 $calls[] = 'insert:' . implode(',', array_column($rows, 'block_id'));
                 return count($rows);
@@ -112,7 +133,7 @@ class ReferenceStoreTest extends TestCase
     public function testAnExactMultipleOfTheChunkSizeRunsNoEmptyInsert(): void
     {
         $store = new ReferenceStore($this->db(), 2);
-        $this->connection->expects($this->exactly(2))->method('insertMultiple')
+        $this->connection->expects($this->exactly(2))->method('insertOnDuplicate')
             ->willReturnCallback(static fn (string $table, array $rows): int => count($rows));
         $store->replace('page', [5], 2, [self::row(5, 1), self::row(5, 2), self::row(5, 3), self::row(5, 4)]);
     }
@@ -120,7 +141,7 @@ class ReferenceStoreTest extends TestCase
     public function testAFailureInALaterChunkRollsBackTheWholeReplace(): void
     {
         $store = new ReferenceStore($this->db(), 1);
-        $this->connection->expects($this->exactly(2))->method('insertMultiple')
+        $this->connection->expects($this->exactly(2))->method('insertOnDuplicate')
             ->willReturnOnConsecutiveCalls(1, $this->throwException(new \RuntimeException('packet too large')));
         $this->connection->expects($this->once())->method('rollBack');
         $this->connection->expects($this->never())->method('commit');

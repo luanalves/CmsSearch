@@ -71,6 +71,18 @@ class BlockReaderTest extends TestCase
         $this->assertSame([['PROMO']], $this->whereValues('b.identifier IN (?)'));
     }
 
+    public function testIdentifiersMatchAccentInsensitivelyLikeTheDatabaseCollation(): void
+    {
+        // utf8mb4_general_ci: cafe = Café and strase = Straße; the database returns the stored spelling
+        $sources = $this->reader($this->db([[
+            self::block(8, 'Café', '<p>c</p>', 0),
+            self::block(9, 'Straße', '<p>s</p>', 0),
+        ]]))->read([new BlockRef('block', 0, 'cafe'), new BlockRef('block', 0, 'CAFÉ'), new BlockRef('block', 0, 'strase')], 2);
+        $this->assertSame(['block@cafe', 'block@strase'], array_keys($sources));
+        $this->assertSame(8, $sources[(new BlockRef('block', 0, 'café'))->key()]->getId());
+        $this->assertSame([['cafe', 'strase']], $this->whereValues('b.identifier IN (?)'), 'one value per collation-equal identifier');
+    }
+
     public function testIdAndIdentifierReferencesUseOneQueryEach(): void
     {
         $sources = $this->reader($this->db([

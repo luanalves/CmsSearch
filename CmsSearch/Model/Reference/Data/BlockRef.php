@@ -46,11 +46,23 @@ final class BlockRef
         return $this->id === 0;
     }
 
-    /** Identity of the reference; identifiers compare case-insensitively like the database collation. */
+    /** Identity of the reference; identifiers compare like the database collation (see foldIdentifier()). */
     public function key(): string
     {
         return $this->id > 0
             ? $this->kind . '#' . $this->id
-            : $this->kind . '@' . mb_strtolower($this->identifier);
+            : $this->kind . '@' . self::foldIdentifier($this->identifier);
+    }
+
+    /**
+     * Approximates utf8mb4_general_ci, the collation of cms_block.identifier and of the graph's unique key: case and
+     * accents are ignored (canonical decomposition, combining marks removed) and ß equals s. What remains different
+     * (letters without a decomposition, e.g. ø, æ) is still merged by the database at insert (ReferenceStore).
+     */
+    public static function foldIdentifier(string $identifier): string
+    {
+        $decomposed = \Normalizer::normalize($identifier, \Normalizer::FORM_D);
+        $plain = preg_replace('/\p{Mn}+/u', '', is_string($decomposed) ? $decomposed : $identifier) ?? $identifier;
+        return str_replace('ß', 's', mb_strtolower($plain));
     }
 }
