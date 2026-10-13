@@ -19,6 +19,7 @@ use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
+use Thedevkitchen\CmsSearch\Model\Search\CmsSearchQuery;
 use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied;
 use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
@@ -32,6 +33,8 @@ class DiPreferencesContractTest extends TestCase
 {
     private const POOL = 'Thedevkitchen\\CmsSearch\\Ui\\DataProvider\\Page\\Form\\Modifier\\Pool';
     private const LOGGER = 'Thedevkitchen\\CmsSearch\\Model\\Queue\\Log\\Logger';
+    private const SEARCH_LOGGER = 'Thedevkitchen\\CmsSearch\\Model\\Search\\Log\\Logger';
+    private const SEARCH_LOGGER_HANDLER = 'Thedevkitchen\\CmsSearch\\Model\\Search\\Log\\Handler';
 
     /** Interfaces configured with <type> in our di.xml => the class Magento instantiates (app/etc/di.xml preference). */
     private const IMPLEMENTATIONS = [
@@ -257,6 +260,28 @@ class DiPreferencesContractTest extends TestCase
                 "$file configures handlers for every Monolog\\Logger; the queue logger would inherit them"
             );
         }
+    }
+
+    /**
+     * Plan 5: the storefront query is a replaceable preference; the search side logs to its own file only (a plain
+     * Monolog\Logger base, so no core handler is inherited - same scan as the queue logger above).
+     */
+    public function testTheSearchQueryIsAPreferenceAndTheSearchSideLogsToItsOwnFile(): void
+    {
+        $di = $this->di('etc/di.xml');
+        $names = static fn (array $nodes): array => array_map(static fn ($node): string => ltrim((string) $node, '\\'), $nodes);
+        $this->assertSame(
+            [CmsSearchQuery::class],
+            $names($di->xpath('//preference[@for="Thedevkitchen\\CmsSearch\\Api\\CmsSearchQueryInterface"]/@type'))
+        );
+        $this->assertSame(\Monolog\Logger::class, $this->virtualTypes()[self::SEARCH_LOGGER] ?? null);
+        $this->assertSame(
+            [self::SEARCH_LOGGER_HANDLER],
+            $names($di->xpath('//virtualType[@name="' . self::SEARCH_LOGGER . '"]/arguments/argument[@name="handlers"]/item'))
+        );
+        $this->assertSame(\Magento\Framework\Logger\Handler\Base::class, $this->virtualTypes()[self::SEARCH_LOGGER_HANDLER] ?? null);
+        $file = $di->xpath('//virtualType[@name="' . self::SEARCH_LOGGER_HANDLER . '"]/arguments/argument[@name="fileName"]');
+        $this->assertSame(['/var/log/cmssearch_search.log'], array_map('strval', $file));
     }
 
     public function testOurPostProcessorIsRegisteredOnTheStagingApplier(): void

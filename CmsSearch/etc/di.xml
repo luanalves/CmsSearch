@@ -133,4 +133,20 @@
             <argument name="fullReindexer" xsi:type="object">Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer\Proxy</argument>
         </arguments>
     </type>
+    <!-- Plan 5: search result page. Read-only queries on the CMS index, logged to var/log/cmssearch_search.log. -->
+    <preference for="Thedevkitchen\CmsSearch\Api\CmsSearchQueryInterface"
+                type="Thedevkitchen\CmsSearch\Model\Search\CmsSearchQuery"/>
+    <virtualType name="Thedevkitchen\CmsSearch\Model\Search\Log\Handler" type="Magento\Framework\Logger\Handler\Base">
+        <arguments>
+            <argument name="fileName" xsi:type="string">/var/log/cmssearch_search.log</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Thedevkitchen\CmsSearch\Model\Search\Log\Logger" type="Monolog\Logger">
+        <arguments>
+            <argument name="name" xsi:type="string">cmssearch_search</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="file" xsi:type="object">Thedevkitchen\CmsSearch\Model\Search\Log\Handler</item>
+            </argument>
+        </arguments>
+    </virtualType>
 </config>
