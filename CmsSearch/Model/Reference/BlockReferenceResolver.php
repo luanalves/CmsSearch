@@ -118,16 +118,16 @@ class BlockReferenceResolver implements BlockReferenceResolverInterface
         return count($rows);
     }
 
-    public function hostsForBlock(string $kind, int $blockId): array
+    public function hostsForBlock(string $kind, int $blockId): iterable
     {
         $identifier = $kind === BlockRef::KIND_BLOCK ? ($this->blockReader->identifierOf($blockId) ?? '') : '';
         return $this->referenceStore->hostsForBlock($kind, $blockId, $identifier);
     }
 
     /**
-     * @return list<array{store_id: int, host_type: string, host_id: int}> hosts the instance published on at their last refresh
+     * @return iterable<list<array{store_id: int, host_type: string, host_id: int}>> pages of graph rows
      */
-    public function hostsForWidgetInstance(int $instanceId): array
+    public function hostsForWidgetInstance(int $instanceId): iterable
     {
         return $this->referenceStore->hostsForSource(ReferenceStore::SOURCE_WIDGET, $instanceId);
     }

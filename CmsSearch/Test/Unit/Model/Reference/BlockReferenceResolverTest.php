@@ -8,7 +8,6 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Model\Indexer\Data\StoreContext;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreContextProvider;
-use Thedevkitchen\CmsSearch\Model\Indexer\TextExtractor;
 use Thedevkitchen\CmsSearch\Model\Reference\BlockReader;
 use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockRef;
@@ -91,8 +90,17 @@ class BlockReferenceResolverTest extends TestCase
     {
         $this->assertCount(1, $this->replaced);
         return array_map(
-            static fn (array $r): string => sprintf('%d %s %d %s %s %d %d %s', $r['host_id'], $r['block_kind'], $r['block_id'],
-                $r['block_identifier'] === '' ? '-' : $r['block_identifier'], $r['source'], $r['source_id'], $r['depth'], $r['segment_ids'] ?? '-'),
+            static fn (array $r): string => sprintf(
+                '%d %s %d %s %s %d %d %s',
+                $r['host_id'],
+                $r['block_kind'],
+                $r['block_id'],
+                $r['block_identifier'] === '' ? '-' : $r['block_identifier'],
+                $r['source'],
+                $r['source_id'],
+                $r['depth'],
+                $r['segment_ids'] ?? '-'
+            ),
             $this->replaced[0][3]
         );
     }
@@ -117,9 +125,11 @@ class BlockReferenceResolverTest extends TestCase
 
     public function testDirectReferencesOfPageContent(): void
     {
-        $this->hosts->method('read')->with('page', [10], 2)->willReturn([10 => self::page(10,
+        $this->hosts->method('read')->with('page', [10], 2)->willReturn([10 => self::page(
+            10,
             '{{block id="footer"}}{{widget type="Magento\Cms\Block\Widget\Block" block_id="4"}}'
-            . '{{widget type="Magento\Banner\Block\Widget\Banner" banner_ids="3"}}{{block id="missing"}}')]);
+            . '{{widget type="Magento\Banner\Block\Widget\Banner" banner_ids="3"}}{{block id="missing"}}'
+        )]);
         $this->blocksFrom([
             'block@footer' => self::cms(7, 'footer', '<p>f</p>'),
             'block#4' => self::cms(4, 'four', '<p>4</p>'),
@@ -283,8 +293,14 @@ class BlockReferenceResolverTest extends TestCase
             new WidgetInstance(18, DirectiveParser::CMS_BLOCK_WIDGET, 5, [0], ['block_id' => '12'], $anchor),
             new WidgetInstance(19, DirectiveParser::CMS_BLOCK_WIDGET, 3, [0], ['block_id' => '13'], $anchor),
             new WidgetInstance(20, DirectiveParser::CMS_BLOCK_WIDGET, 5, [3], ['block_id' => '14'], $anchor),
-            new WidgetInstance(21, DirectiveParser::CMS_BLOCK_WIDGET, 5, [0], ['block_id' => '15'],
-                [new WidgetPageGroup('pages', 'checkout_cart_index', 'all', [])]),
+            new WidgetInstance(
+                21,
+                DirectiveParser::CMS_BLOCK_WIDGET,
+                5,
+                [0],
+                ['block_id' => '15'],
+                [new WidgetPageGroup('pages', 'checkout_cart_index', 'all', [])]
+            ),
         ]);
         $this->hosts->method('read')->willReturn([
             37 => new HostSource(new HostFacts('category', 37, '', '', true), []),
@@ -300,8 +316,14 @@ class BlockReferenceResolverTest extends TestCase
     public function testAnAllPagesWidgetInstancePublishesOnNoHost(): void
     {
         $this->widgets->method('all')->willReturn([
-            new WidgetInstance(2, DirectiveParser::CMS_BLOCK_WIDGET, 5, [0], ['block_id' => '2'],
-                [new WidgetPageGroup('all_pages', 'default', 'all', [])]),
+            new WidgetInstance(
+                2,
+                DirectiveParser::CMS_BLOCK_WIDGET,
+                5,
+                [0],
+                ['block_id' => '2'],
+                [new WidgetPageGroup('all_pages', 'default', 'all', [])]
+            ),
         ]);
         $this->hosts->method('read')->willReturnCallback(static fn (string $type, array $ids): array => match ($type) {
             'page' => [10 => self::page(10, '<p>no directive</p>')],
@@ -384,22 +406,22 @@ class BlockReferenceResolverTest extends TestCase
 
     public function testReverseLookupsUseTheCurrentIdentifierForCmsBlocksOnly(): void
     {
-        $rows = [['store_id' => 2, 'host_type' => 'page', 'host_id' => 10]];
+        $pages = [[['store_id' => 2, 'host_type' => 'page', 'host_id' => 10]]];
         $this->blocks->expects($this->once())->method('identifierOf')->with(7)->willReturn('footer');
         $this->store->expects($this->exactly(2))->method('hostsForBlock')
-            ->willReturnCallback(static fn (string $kind, int $id, string $identifier): array => $kind === 'block' && $identifier === 'footer' ? $rows : []);
-        $this->store->expects($this->once())->method('hostsForSource')->with('widget', 18)->willReturn($rows);
+            ->willReturnCallback(static fn (string $kind, int $id, string $identifier): array => $kind === 'block' && $identifier === 'footer' ? $pages : []);
+        $this->store->expects($this->once())->method('hostsForSource')->with('widget', 18)->willReturn($pages);
         $resolver = $this->resolver();
-        $this->assertSame($rows, $resolver->hostsForBlock('block', 7));
-        $this->assertSame([], $resolver->hostsForBlock('dynamic_block', 3));
-        $this->assertSame($rows, $resolver->hostsForWidgetInstance(18));
+        $this->assertSame($pages, iterator_to_array($resolver->hostsForBlock('block', 7), false));
+        $this->assertSame([], iterator_to_array($resolver->hostsForBlock('dynamic_block', 3), false));
+        $this->assertSame($pages, iterator_to_array($resolver->hostsForWidgetInstance(18), false));
     }
 
     public function testADeletedBlockIsLookedUpByItsIdOnly(): void
     {
         $this->blocks->method('identifierOf')->willReturn(null);
         $this->store->expects($this->once())->method('hostsForBlock')->with('block', 7, '')->willReturn([]);
-        $this->assertSame([], $this->resolver()->hostsForBlock('block', 7));
+        $this->assertSame([], iterator_to_array($this->resolver()->hostsForBlock('block', 7), false));
     }
 
     public function testAnUnknownHostTypeIsRefused(): void

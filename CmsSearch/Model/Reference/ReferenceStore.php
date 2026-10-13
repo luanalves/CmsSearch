@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Model\Reference;
 
 use Magento\Framework\App\ResourceConnection;
-use Magento\Framework\DB\Select;
 use Magento\Framework\DB\Sql\Expression;
 use Thedevkitchen\CmsSearch\Model\Db\Tables;
 use Thedevkitchen\CmsSearch\Model\Reference\Data\BlockRef;
@@ -20,6 +19,9 @@ class ReferenceStore
 {
     public const SOURCE_CONTENT = 'content';
     public const SOURCE_WIDGET = 'widget';
+
+    /** Graph rows per keyset page of a host lookup (bounds memory for blocks placed on every product). */
+    public const HOST_PAGE_SIZE = 1000;
 
     /**
      * @param int $insertChunkSize rows per INSERT statement (bounded packet size and placeholders)
@@ -68,44 +70,39 @@ class ReferenceStore
     }
 
     /**
-     * @return list<array{store_id: int, host_type: string, host_id: int}>
+     * Hosts that referenced a block at their last refresh, as keyset pages of graph rows (ordered by reference_id,
+     * through the (block_kind, block_id) index, then - for a CMS block - through (block_kind, block_identifier) for its
+     * current identifier). Rows are not distinct: a host may appear in several rows and pages; the caller deduplicates.
+     * Lazy: nothing is read before the pages are iterated.
+     *
+     * @return iterable<list<array{store_id: int, host_type: string, host_id: int}>>
      */
-    public function hostsForBlock(string $kind, int $blockId, string $identifier = ''): array
-    {
+    public function hostsForBlock(
+        string $kind,
+        int $blockId,
+        string $identifier = '',
+        int $pageSize = self::HOST_PAGE_SIZE
+    ): iterable {
         if ($blockId <= 0 || !in_array($kind, BlockRef::KINDS, true)) {
-            return [];
+            return;
         }
-        $connection = $this->resource->getConnection();
-        $match = $connection->quoteInto('block_id = ?', $blockId);
+        yield from $this->pagesOf(['block_kind = ?' => $kind, 'block_id = ?' => $blockId], $pageSize);
         if ($identifier !== '') {
-            $match .= ' OR ' . $connection->quoteInto('block_identifier = ?', $identifier);
+            yield from $this->pagesOf(['block_kind = ?' => $kind, 'block_identifier = ?' => $identifier], $pageSize);
         }
-        return $this->hosts(
-            $connection->select()->distinct()
-                ->from($this->resource->getTableName(Tables::BLOCK_REFERENCE), ['store_id', 'host_type', 'host_id'])
-                ->where('block_kind = ?', $kind)
-                ->where($match)
-                ->order(['store_id ASC', 'host_type ASC', 'host_id ASC'])
-        );
     }
 
     /**
-     * @return list<array{store_id: int, host_type: string, host_id: int}> hosts a widget instance published on
+     * @return iterable<list<array{store_id: int, host_type: string, host_id: int}>> pages of the graph rows a widget
+     *         instance published (also after it was deleted or moved: the BEFORE side of a widget message)
      */
-    public function hostsForSource(string $source, int $sourceId): array
+    public function hostsForSource(string $source, int $sourceId, int $pageSize = self::HOST_PAGE_SIZE): iterable
     {
         // Content rows all have source_id 0: only a real widget instance id identifies a set of hosts.
         if ($source !== self::SOURCE_WIDGET || $sourceId <= 0) {
-            return [];
+            return;
         }
-        $connection = $this->resource->getConnection();
-        return $this->hosts(
-            $connection->select()->distinct()
-                ->from($this->resource->getTableName(Tables::BLOCK_REFERENCE), ['store_id', 'host_type', 'host_id'])
-                ->where('source = ?', $source)
-                ->where('source_id = ?', $sourceId)
-                ->order(['store_id ASC', 'host_type ASC', 'host_id ASC'])
-        );
+        yield from $this->pagesOf(['source = ?' => $source, 'source_id = ?' => $sourceId], $pageSize);
     }
 
     /**
@@ -143,17 +140,37 @@ class ReferenceStore
     }
 
     /**
-     * @return list<array{store_id: int, host_type: string, host_id: int}>
+     * @param array<string, int|string> $conditions
+     * @return \Generator<int, list<array{store_id: int, host_type: string, host_id: int}>>
      */
-    private function hosts(Select $select): array
+    private function pagesOf(array $conditions, int $pageSize): \Generator
     {
-        return array_map(
-            static fn (array $row): array => [
-                'store_id' => (int) $row['store_id'],
-                'host_type' => (string) $row['host_type'],
-                'host_id' => (int) $row['host_id'],
-            ],
-            $this->resource->getConnection()->fetchAll($select)
-        );
+        if ($pageSize < 1) {
+            throw new \InvalidArgumentException('The page size must be positive.');
+        }
+        $connection = $this->resource->getConnection();
+        $table = $this->resource->getTableName(Tables::BLOCK_REFERENCE);
+        $after = 0;
+        do {
+            $select = $connection->select()
+                ->from($table, ['reference_id', 'store_id', 'host_type', 'host_id'])
+                ->where('reference_id > ?', $after);
+            foreach ($conditions as $condition => $value) {
+                $select->where($condition, $value);
+            }
+            $rows = $connection->fetchAll($select->order('reference_id ASC')->limit($pageSize));
+            if ($rows === []) {
+                return;
+            }
+            $after = (int) $rows[array_key_last($rows)]['reference_id'];
+            yield array_map(
+                static fn (array $row): array => [
+                    'store_id' => (int) $row['store_id'],
+                    'host_type' => (string) $row['host_type'],
+                    'host_id' => (int) $row['host_id'],
+                ],
+                $rows
+            );
+        } while (count($rows) === $pageSize);
     }
 }

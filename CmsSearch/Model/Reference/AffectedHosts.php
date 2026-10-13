@@ -27,10 +27,14 @@ use Thedevkitchen\CmsSearch\Model\Reference\Data\HostType;
  *
  * resolve() validates the entity type at once (InvalidReindexMessageException, permanent) but reads nothing until the
  * returned chunks are iterated: the processor does not iterate when no store view is concerned. Each chunk is a
- * list of unique hosts (store_id null = every store view of the message). Never writes, never publishes.
+ * list of at most $chunkSize hosts (store_id null = every store view of the message); block and widget instance
+ * messages read the graph in keyset pages and deduplicate hosts across pages (memory bounded by one int per host and
+ * store view). Never writes, never publishes.
  */
 class AffectedHosts
 {
+    private const TYPE_INDEX = [HostType::PAGE => 0, HostType::CATEGORY => 1, HostType::PRODUCT => 2];
+
     public function __construct(
         private readonly AffectedPages $affectedPages,
         private readonly ShadowedPageReader $shadowedPageReader,
@@ -39,8 +43,12 @@ class AffectedHosts
         private readonly WidgetInstanceResolver $widgetInstanceResolver,
         private readonly StoreThemeResolver $storeThemeResolver,
         private readonly StoreContextProvider $storeContextProvider,
-        private readonly HostCatalog $hostCatalog
+        private readonly HostCatalog $hostCatalog,
+        private readonly int $chunkSize = 1000
     ) {
+        if ($chunkSize < 1) {
+            throw new \InvalidArgumentException('The chunk size must be positive.');
+        }
     }
 
     /**
@@ -87,7 +95,7 @@ class AffectedHosts
      */
     private function ofBlock(string $kind, int $blockId): \Generator
     {
-        yield self::unique($this->fromGraph($this->blockReferenceResolver->hostsForBlock($kind, $blockId)));
+        yield from $this->chunked($this->graphHosts($this->blockReferenceResolver->hostsForBlock($kind, $blockId)));
     }
 
     /**
@@ -95,38 +103,38 @@ class AffectedHosts
      */
     private function ofWidgetInstance(int $instanceId): \Generator
     {
-        yield self::unique(array_merge(
-            $this->fromGraph($this->blockReferenceResolver->hostsForWidgetInstance($instanceId)),
-            $this->placementOf($instanceId)
-        ));
+        yield from $this->chunked((function () use ($instanceId): \Generator {
+            yield from $this->graphHosts($this->blockReferenceResolver->hostsForWidgetInstance($instanceId));
+            yield from $this->placementOf($instanceId);
+        })());
     }
 
     /**
-     * @param list<array{store_id: int, host_type: string, host_id: int}> $rows
-     * @return list<array{host_type: string, host_id: int, store_id: ?int}>
+     * @param iterable<list<array{store_id: int, host_type: string, host_id: int}>> $pages
+     * @return \Generator<int, array{host_type: string, host_id: int, store_id: ?int}>
      */
-    private function fromGraph(array $rows): array
+    private function graphHosts(iterable $pages): \Generator
     {
-        return array_map(
-            static fn (array $row): array => self::host((string) $row['host_type'], (int) $row['host_id'], (int) $row['store_id']),
-            $rows
-        );
+        foreach ($pages as $rows) {
+            foreach ($rows as $row) {
+                yield self::host((string) $row['host_type'], (int) $row['host_id'], (int) $row['store_id']);
+            }
+        }
     }
 
     /**
-     * @return list<array{host_type: string, host_id: int, store_id: ?int}>
+     * @return \Generator<int, array{host_type: string, host_id: int, store_id: ?int}> current placement (AFTER side)
      */
-    private function placementOf(int $instanceId): array
+    private function placementOf(int $instanceId): \Generator
     {
         $instance = $this->widgetInstanceReader->get($instanceId);
         if ($instance === null || $this->widgetInstanceResolver->blockRefs($instance) === []) {
-            return []; // deleted, or publishes no block: only its old hosts (BEFORE) change
+            return; // deleted, or publishes no block: only its old hosts (BEFORE) change
         }
         $selectors = $this->widgetInstanceResolver->selectors($instance);
         if ($selectors === []) {
-            return []; // only ignored placements (all_pages, cart, checkout...)
+            return; // only ignored placements (all_pages, cart, checkout...)
         }
-        $hosts = [];
         foreach ($this->storeContextProvider->all() as $store) {
             $storeId = $store->getStoreId();
             if (!$this->widgetInstanceResolver->appliesToStore($instance, $storeId, $this->storeThemeResolver->themeId($storeId))) {
@@ -134,24 +142,40 @@ class AffectedHosts
             }
             foreach ($selectors as $selector) {
                 foreach ($this->hostCatalog->ids($selector, $store) as $hostId) {
-                    $hosts[] = self::host($selector->getHostType(), (int) $hostId, $storeId);
+                    yield self::host($selector->getHostType(), (int) $hostId, $storeId);
                 }
             }
         }
-        return $hosts;
     }
 
     /**
-     * @param list<array{host_type: string, host_id: int, store_id: ?int}> $hosts
-     * @return list<array{host_type: string, host_id: int, store_id: ?int}> first occurrence kept, order preserved
+     * Each host once per message (first occurrence), in chunks of at most $chunkSize. The dedupe map holds ONE int per
+     * host and store view (host ids <= 2^32, store ids <= 2^16), never the host rows: a block placed on every product
+     * of a large catalog stays bounded in memory (README "Known limits").
+     *
+     * @param iterable<array{host_type: string, host_id: int, store_id: ?int}> $hosts
+     * @return \Generator<int, list<array{host_type: string, host_id: int, store_id: ?int}>>
      */
-    private static function unique(array $hosts): array
+    private function chunked(iterable $hosts): \Generator
     {
-        $unique = [];
+        /** @var array<int, true> $seen */
+        $seen = [];
+        $chunk = [];
         foreach ($hosts as $host) {
-            $unique[$host['host_type'] . '|' . $host['host_id'] . '|' . ($host['store_id'] ?? '*')] ??= $host;
+            $key = $host['host_id'] * 262144 + ($host['store_id'] ?? 0) * 4 + (self::TYPE_INDEX[$host['host_type']] ?? 3);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $chunk[] = $host;
+            if (count($chunk) >= $this->chunkSize) {
+                yield $chunk;
+                $chunk = [];
+            }
         }
-        return array_values($unique);
+        if ($chunk !== []) {
+            yield $chunk;
+        }
     }
 
     /**

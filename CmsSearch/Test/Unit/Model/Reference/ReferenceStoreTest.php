@@ -162,41 +162,53 @@ class ReferenceStoreTest extends TestCase
         new ReferenceStore($this->db(), 0);
     }
 
-    public function testHostsForABlockMatchItsIdOrItsIdentifier(): void
+    public function testHostsForABlockAreReadInKeysetPagesByIdThenByIdentifier(): void
     {
-        $store = new ReferenceStore($this->db([[
-            ['store_id' => '2', 'host_type' => 'page', 'host_id' => '5'],
-            ['store_id' => '3', 'host_type' => 'category', 'host_id' => '37'],
-        ]]));
-        $this->assertSame(
+        $store = new ReferenceStore($this->db([
+            [['reference_id' => '4', 'store_id' => '2', 'host_type' => 'page', 'host_id' => '5'],
+                ['reference_id' => '9', 'store_id' => '3', 'host_type' => 'category', 'host_id' => '37']],
+            [['reference_id' => '12', 'store_id' => '2', 'host_type' => 'page', 'host_id' => '6']],
+            [['reference_id' => '15', 'store_id' => '2', 'host_type' => 'page', 'host_id' => '7']],
+        ]));
+        $this->assertSame([
             [['store_id' => 2, 'host_type' => 'page', 'host_id' => 5], ['store_id' => 3, 'host_type' => 'category', 'host_id' => 37]],
-            $store->hostsForBlock('block', 7, 'footer')
-        );
-        $this->assertSame(['block'], $this->whereValues('block_kind = ?'));
-        $this->assertSame([null], $this->whereValues("block_id = '7' OR block_identifier = 'footer'"));
-        $this->assertSame([self::TABLE], $this->tables);
-        $this->assertSame(['store_id ASC,host_type ASC,host_id ASC'], $this->orders);
+            [['store_id' => 2, 'host_type' => 'page', 'host_id' => 6]],
+            [['store_id' => 2, 'host_type' => 'page', 'host_id' => 7]],
+        ], iterator_to_array($store->hostsForBlock('block', 7, 'footer', 2), false));
+        // page size 2: a full first page asks for the next one (after reference_id 9); the identifier pass starts again at 0
+        $this->assertSame([0, 9, 0], $this->whereValues('reference_id > ?'));
+        $this->assertSame(['block', 'block', 'block'], $this->whereValues('block_kind = ?'));
+        $this->assertSame([7, 7], $this->whereValues('block_id = ?'));
+        $this->assertSame(['footer'], $this->whereValues('block_identifier = ?'));
+        $this->assertSame(['reference_id ASC', 'reference_id ASC', 'reference_id ASC'], $this->orders);
+        $this->assertSame([self::TABLE, self::TABLE, self::TABLE], $this->tables);
     }
 
-    public function testHostsForADynamicBlockUseTheIdOnlyAndAnInvalidIdRunsNoQuery(): void
+    public function testADynamicBlockIsLookedUpByIdOnlyAndInvalidInputRunsNoQuery(): void
     {
         $store = new ReferenceStore($this->db([[]]));
-        $this->assertSame([], $store->hostsForBlock('dynamic_block', 3));
-        $this->assertSame([null], $this->whereValues("block_id = '3'"));
-        $this->assertSame([], $store->hostsForBlock('block', 0, 'footer'));
-        $this->assertSame([], $store->hostsForBlock('banner', 3));
+        $this->assertSame([], iterator_to_array($store->hostsForBlock('dynamic_block', 3), false));
+        $this->assertSame([3], $this->whereValues('block_id = ?'));
+        $this->assertSame([], $this->whereValues('block_identifier = ?'));
+        $this->assertSame([], iterator_to_array($store->hostsForBlock('block', 0, 'footer'), false));
+        $this->assertSame([], iterator_to_array($store->hostsForBlock('banner', 3), false));
     }
 
-    public function testHostsForAWidgetInstance(): void
+    public function testHostsForAWidgetInstanceAreReadInKeysetPages(): void
     {
-        $store = new ReferenceStore($this->db([[['store_id' => '1', 'host_type' => 'product', 'host_id' => '7']]]));
-        $this->assertSame([['store_id' => 1, 'host_type' => 'product', 'host_id' => 7]], $store->hostsForSource('widget', 18));
+        $store = new ReferenceStore($this->db([[['reference_id' => '8', 'store_id' => '1', 'host_type' => 'product', 'host_id' => '7']]]));
+        $this->assertSame(
+            [[['store_id' => 1, 'host_type' => 'product', 'host_id' => 7]]],
+            iterator_to_array($store->hostsForSource('widget', 18), false)
+        );
         $this->assertSame(['widget'], $this->whereValues('source = ?'));
         $this->assertSame([18], $this->whereValues('source_id = ?'));
         // source id 0 (every content row) or an unknown source would match unrelated hosts: no query.
-        $this->assertSame([], $store->hostsForSource('content', 0));
-        $this->assertSame([], $store->hostsForSource('widget', 0));
-        $this->assertSame([], $store->hostsForSource('layout', 18));
+        $this->assertSame([], iterator_to_array($store->hostsForSource('content', 0), false));
+        $this->assertSame([], iterator_to_array($store->hostsForSource('widget', 0), false));
+        $this->assertSame([], iterator_to_array($store->hostsForSource('layout', 18), false));
+        $this->expectException(\InvalidArgumentException::class);
+        iterator_to_array($store->hostsForSource('widget', 18, 0));
     }
 
     public function testDirectReferencesAreGroupedByHostInInsertionOrder(): void

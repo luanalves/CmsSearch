@@ -22,10 +22,10 @@ use Thedevkitchen\CmsSearch\Model\Reference\AffectedHosts;
  *   The store list is compared with the database before every message (StoreListRefresher): a store view added,
  *   deleted or re-rooted since the consumer started is seen without a restart.
  *   Without any concerned store view the hosts are not even read.
- * - Hosts are processed chunk by chunk as AffectedHosts streams them, but only for page, category and product messages
- *   (keyset paging). Block and widget instance messages are NOT bounded: AffectedHosts::ofBlock / ofWidgetInstance
- *   return the whole host list in ONE chunk, so a block or widget placed on all_products / <type>_products loads every
- *   host triple in memory and runs in one message (see the README known limits: consumer_timeout, ~100k products).
+ * - Hosts are processed chunk by chunk as AffectedHosts streams them (at most 1000 hosts per chunk), for every
+ *   entity type: page/content type/term messages through keyset page ids, block and widget instance messages through
+ *   keyset pages of the reference graph with one int per host and store view kept for deduplication. A block placed
+ *   on every product is bounded in memory; its time stays linear in the number of hosts (README known limits).
  * - A missing entity or store view is a success (its rows/documents are removed or never existed).
  *   InvalidReindexMessageException (unsupported entity type, from AffectedHosts) is permanent; every other exception
  *   propagates unchanged and is retried by ReindexHandler (the work is idempotent).

@@ -16,14 +16,16 @@ interface BlockReferenceResolverInterface
 
     /**
      * @param string $kind Model\Reference\Data\BlockRef::KIND_BLOCK or KIND_DYNAMIC_BLOCK
-     * @return list<array{store_id: int, host_type: string, host_id: int}> hosts that referenced the block at their
-     *         last refresh (a CMS block is also found through its current identifier)
+     * @return iterable<list<array{store_id: int, host_type: string, host_id: int}>> pages (at most 1000 graph rows each,
+     *         lazy, not distinct) of the hosts that referenced the block at their last refresh (a CMS block is also
+     *         found through its current identifier)
      */
-    public function hostsForBlock(string $kind, int $blockId): array;
+    public function hostsForBlock(string $kind, int $blockId): iterable;
 
     /**
-     * @return list<array{store_id: int, host_type: string, host_id: int}> hosts a widget instance published on at
-     *         their last refresh (also after the instance was deleted or moved: the BEFORE side of a widget message)
+     * @return iterable<list<array{store_id: int, host_type: string, host_id: int}>> pages (as above) of the hosts a
+     *         widget instance published on at their last refresh (also after the instance was deleted or moved: the
+     *         BEFORE side of a widget message)
      */
-    public function hostsForWidgetInstance(int $instanceId): array;
+    public function hostsForWidgetInstance(int $instanceId): iterable;
 }
