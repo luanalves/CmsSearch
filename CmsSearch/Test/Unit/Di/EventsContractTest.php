@@ -7,7 +7,13 @@ namespace Thedevkitchen\CmsSearch\Test\Unit\Di;
 use Magento\Framework\Event\ObserverInterface;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Observer\AddCmsTabHandle;
+use Thedevkitchen\CmsSearch\Observer\PublishBlockReindex;
+use Thedevkitchen\CmsSearch\Observer\PublishCategoryReindex;
+use Thedevkitchen\CmsSearch\Observer\PublishDynamicBlockReindex;
 use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
+use Thedevkitchen\CmsSearch\Observer\PublishProductImportReindex;
+use Thedevkitchen\CmsSearch\Observer\PublishProductReindex;
+use Thedevkitchen\CmsSearch\Observer\PublishWidgetInstanceReindex;
 use Thedevkitchen\CmsSearch\Observer\SavePageClassification;
 
 /**
@@ -72,5 +78,42 @@ class EventsContractTest extends TestCase
             );
             $this->assertContains(PublishPageReindex::class, $instances, $event);
         }
+    }
+
+    /**
+     * Plan 6: every write of a block or of a host asks for a reindex, from the global area (admin, REST, CLI, cron,
+     * async consumers). Model events fire inside the save transaction (the publisher sends after the outermost COMMIT);
+     * product imports write by raw SQL and are covered by the bunch events.
+     */
+    public function testEveryBlockAndHostWriteAsksForAReindex(): void
+    {
+        $xml = simplexml_load_file(dirname(__DIR__, 3) . '/etc/events.xml');
+        $expected = [
+            'cms_block_save_after' => PublishBlockReindex::class,
+            'cms_block_delete_after' => PublishBlockReindex::class,
+            'magento_banner_save_after' => PublishDynamicBlockReindex::class,
+            'magento_banner_delete_after' => PublishDynamicBlockReindex::class,
+            'widget_widget_instance_save_after' => PublishWidgetInstanceReindex::class,
+            'widget_widget_instance_delete_after' => PublishWidgetInstanceReindex::class,
+            'catalog_product_save_after' => PublishProductReindex::class,
+            'catalog_product_delete_after' => PublishProductReindex::class,
+            'catalog_category_save_after' => PublishCategoryReindex::class,
+            'catalog_category_delete_after' => PublishCategoryReindex::class,
+            'catalog_category_move_after' => PublishCategoryReindex::class,
+            'catalog_product_import_bunch_save_after' => PublishProductImportReindex::class,
+            'catalog_product_import_bunch_delete_after' => PublishProductImportReindex::class,
+        ];
+        foreach ($expected as $event => $class) {
+            $instances = array_map(
+                static fn ($node): string => ltrim((string) $node, '\\'),
+                $xml->xpath('//event[@name="' . $event . '"]/observer/@instance')
+            );
+            $this->assertSame([$class], $instances, $event);
+        }
+        $this->assertSame(
+            array_merge(['cms_page_save_after', 'cms_page_delete_after'], array_keys($expected)),
+            array_map('strval', $xml->xpath('//event/@name')),
+            'no other global event is observed'
+        );
     }
 }

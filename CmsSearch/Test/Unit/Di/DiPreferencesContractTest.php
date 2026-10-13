@@ -18,8 +18,8 @@ use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
 use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
 use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
 use Thedevkitchen\CmsSearch\Model\Indexer\ProductBlockTextProvider;
-use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\HostReindexProcessor;
+use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexPublisher;
 use Thedevkitchen\CmsSearch\Model\Reference\BlockReferenceResolver;
@@ -27,7 +27,10 @@ use Thedevkitchen\CmsSearch\Model\Search\CmsSearchQuery;
 use Thedevkitchen\CmsSearch\Model\Search\ProductCount;
 use Thedevkitchen\CmsSearch\Model\Search\SearchState;
 use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied;
+use Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\ReferenceVersionApplied;
+use Thedevkitchen\CmsSearch\Observer\PublishCategoryReindex;
 use Thedevkitchen\CmsSearch\Observer\PublishPageReindex;
+use Thedevkitchen\CmsSearch\Plugin\Catalog\PublishProductMassActionReindex;
 use Thedevkitchen\CmsSearch\Plugin\Cms\PageFormDataPlugin;
 use Thedevkitchen\CmsSearch\Plugin\Framework\DB\FlushReindexMessagesPlugin;
 use Thedevkitchen\CmsSearch\Ui\DataProvider\Page\Form\Modifier\SearchFieldset;
@@ -334,11 +337,38 @@ class DiPreferencesContractTest extends TestCase
         $items = $this->di('etc/di.xml')->xpath(
             '//type[@name="Magento\\Staging\\Model\\StagingApplier"]/arguments/argument[@name="postProcessors"]/item'
         );
-        $this->assertCount(1, $items);
-        $this->assertSame('thedevkitchen_cmssearch_page', (string) $items[0]['name']);
-        $this->assertSame('object', (string) $items[0]->attributes('xsi', true)->type);
-        $this->assertSame(PageVersionApplied::class, ltrim((string) $items[0], '\\'));
-        $this->assertTrue(is_a(PageVersionApplied::class, PostProcessorInterface::class, true));
+        $registered = [];
+        foreach ($items as $item) {
+            $this->assertSame('object', (string) $item->attributes('xsi', true)->type);
+            $registered[(string) $item['name']] = ltrim((string) $item, '\\');
+        }
+        $this->assertSame([
+            'thedevkitchen_cmssearch_page' => PageVersionApplied::class,
+            'thedevkitchen_cmssearch_references' => ReferenceVersionApplied::class,
+        ], $registered);
+        foreach ($registered as $class) {
+            $this->assertTrue(is_a($class, PostProcessorInterface::class, true), $class);
+        }
+    }
+
+    /**
+     * Product\Action (admin "Update attributes" consumers, website assignment) writes by raw SQL without product model
+     * events: the plugin asks for the products after the write.
+     */
+    public function testProductMassActionsArePluggedToPublish(): void
+    {
+        $plugins = $this->di('etc/di.xml')->xpath('//type[@name="Magento\\Catalog\\Model\\Product\\Action"]/plugin');
+        $this->assertCount(1, $plugins);
+        $this->assertSame('thedevkitchen_cmssearch_publish_product_reindex', (string) $plugins[0]['name']);
+        $this->assertSame(PublishProductMassActionReindex::class, ltrim((string) $plugins[0]['type'], '\\'));
+    }
+
+    public function testTheCategoryObserverLogsToTheQueueFile(): void
+    {
+        $logger = $this->di('etc/di.xml')->xpath(
+            '//type[@name="' . PublishCategoryReindex::class . '"]/arguments/argument[@name="logger"]'
+        );
+        $this->assertSame([self::LOGGER], array_map(static fn ($node): string => ltrim((string) $node, '\\'), $logger));
     }
 
     /**

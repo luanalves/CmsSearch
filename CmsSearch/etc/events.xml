@@ -13,4 +13,47 @@
         <observer name="thedevkitchen_cmssearch_publish_page_reindex"
                   instance="Thedevkitchen\CmsSearch\Observer\PublishPageReindex"/>
     </event>
+    <!-- Plan 6: blocks, Dynamic Blocks, widget instances, products and categories ask for a reindex of the hosts they
+         reach, one message per entity (inside the save transaction; sent after the outermost COMMIT, dropped on
+         ROLLBACK). Global area: admin, REST, CLI, cron and async consumers. -->
+    <event name="cms_block_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_block_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishBlockReindex"/>
+    </event>
+    <event name="cms_block_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_block_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishBlockReindex"/>
+    </event>
+    <event name="magento_banner_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_dynamic_block_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishDynamicBlockReindex"/>
+    </event>
+    <event name="magento_banner_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_dynamic_block_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishDynamicBlockReindex"/>
+    </event>
+    <event name="widget_widget_instance_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_widget_instance_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishWidgetInstanceReindex"/>
+    </event>
+    <event name="widget_widget_instance_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_widget_instance_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishWidgetInstanceReindex"/>
+    </event>
+    <event name="catalog_product_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_product_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishProductReindex"/>
+    </event>
+    <event name="catalog_product_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_product_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishProductReindex"/>
+    </event>
+    <event name="catalog_category_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_category_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishCategoryReindex"/>
+    </event>
+    <event name="catalog_category_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_category_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishCategoryReindex"/>
+    </event>
+    <event name="catalog_category_move_after">
+        <observer name="thedevkitchen_cmssearch_publish_category_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishCategoryReindex"/>
+    </event>
+    <!-- Product imports write by raw SQL: the bunch events name the products (after the bunch is written). -->
+    <event name="catalog_product_import_bunch_save_after">
+        <observer name="thedevkitchen_cmssearch_publish_product_import_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishProductImportReindex"/>
+    </event>
+    <event name="catalog_product_import_bunch_delete_after">
+        <observer name="thedevkitchen_cmssearch_publish_product_import_reindex" instance="Thedevkitchen\CmsSearch\Observer\PublishProductImportReindex"/>
+    </event>
 </config>

@@ -113,10 +113,22 @@
         </arguments>
     </type>
     <!-- Staging (D9): scheduled page content that starts or ends asks for a page reindex. -->
+    <!-- Plan 6: the category observer logs a failed subtree lookup (ids only) to the queue log. -->
+    <type name="Thedevkitchen\CmsSearch\Observer\PublishCategoryReindex">
+        <arguments>
+            <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
+        </arguments>
+    </type>
+    <!-- Plan 6: mass "Update attributes" and website assignment write by raw SQL (no product model event). -->
+    <type name="Magento\Catalog\Model\Product\Action">
+        <plugin name="thedevkitchen_cmssearch_publish_product_reindex"
+                type="Thedevkitchen\CmsSearch\Plugin\Catalog\PublishProductMassActionReindex"/>
+    </type>
     <type name="Magento\Staging\Model\StagingApplier">
         <arguments>
             <argument name="postProcessors" xsi:type="array">
                 <item name="thedevkitchen_cmssearch_page" xsi:type="object">Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\PageVersionApplied</item>
+                <item name="thedevkitchen_cmssearch_references" xsi:type="object">Thedevkitchen\CmsSearch\Model\Staging\PostProcessor\ReferenceVersionApplied</item>
             </argument>
         </arguments>
     </type>
