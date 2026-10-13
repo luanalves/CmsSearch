@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Model\Search;
 
 use Magento\Framework\App\RequestInterface;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Magento\Search\Helper\Data as SearchHelper;
 use Magento\Search\Model\QueryFactoryInterface;
 use Magento\Store\Model\StoreManagerInterface;
@@ -22,7 +23,7 @@ use Thedevkitchen\CmsSearch\Model\Search\Data\Tab;
  * single answer of the CMS index. Uses the search text already normalized by Magento's own flow (QueryFactory).
  * Never throws: any failure leaves the native Products page (TS-41), logged once and without the searched text.
  */
-class SearchState
+class SearchState implements ResetAfterRequestInterface
 {
     public const MAX_QUERY_LENGTH = 256;
 
@@ -54,6 +55,23 @@ class SearchState
         private readonly CmsSearchQueryInterface $query,
         private readonly LoggerInterface $logger
     ) {
+    }
+
+    /** Long-running workers (application server, GraphQL) reuse the shared instance: forget this request's decision. */
+    public function _resetState(): void
+    {
+        $this->resolved = false;
+        $this->enabled = false;
+        $this->queryText = '';
+        $this->storeId = 0;
+        $this->websiteId = 0;
+        $this->tabs = [];
+        $this->active = null;
+        $this->result = null;
+        $this->term = null;
+        $this->tree = null;
+        $this->page = 1;
+        $this->pageSize = Config::DEFAULT_PAGE_SIZE;
     }
 
     /** Tabs and CMS results apply to this request (module on for the store view, a usable search text). */

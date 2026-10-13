@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Model\Search;
 
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Thedevkitchen\CmsSearch\Model\Classification\TreeBuilder;
 
 /**
@@ -11,13 +12,18 @@ use Thedevkitchen\CmsSearch\Model\Classification\TreeBuilder;
  * inactive ancestor hides its branch), with store view labels. Built once per website + store view and request
  * (two queries: rows and labels).
  */
-class ClassificationTerms
+class ClassificationTerms implements ResetAfterRequestInterface
 {
     /** @var array<string, list<array<string, mixed>>> */
     private array $trees = [];
 
     public function __construct(private readonly TreeBuilder $treeBuilder)
     {
+    }
+
+    public function _resetState(): void
+    {
+        $this->trees = [];
     }
 
     /**

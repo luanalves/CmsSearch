@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Thedevkitchen\CmsSearch\Test\Unit\Model\Search;
 
 use Magento\Framework\App\RequestInterface;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Magento\Search\Helper\Data as SearchHelper;
 use Magento\Search\Model\QueryFactoryInterface;
 use Magento\Search\Model\QueryInterface;
@@ -490,5 +491,18 @@ class SearchStateTest extends TestCase
         $this->assertSame('help', $state->getActiveTab()->getCode());
         $this->assertSame(0, $state->getActiveTab()->getCount());
         $this->assertSame('help', $this->lastRequest()->getContentTypeCode());
+    }
+
+    public function testAResetForgetsTheDecisionOfThePreviousRequest(): void
+    {
+        $state = $this->state();
+        $this->assertInstanceOf(ResetAfterRequestInterface::class, $state);
+        $this->assertSame('milho', $state->getQueryText());
+        $this->queryText = 'soja';
+        $this->assertSame('milho', $state->getQueryText(), 'decided once per request');
+        $requests = count($this->requests);
+        $state->_resetState();
+        $this->assertSame('soja', $state->getQueryText());
+        $this->assertSame($requests + 1, count($this->requests), 'the next request asks the index again');
     }
 }

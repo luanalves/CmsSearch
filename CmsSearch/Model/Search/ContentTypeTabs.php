@@ -6,6 +6,7 @@ namespace Thedevkitchen\CmsSearch\Model\Search;
 
 use Magento\Framework\Api\SearchCriteriaBuilderFactory;
 use Magento\Framework\Api\SortOrderBuilder;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Thedevkitchen\CmsSearch\Api\ContentTypeRepositoryInterface;
 use Thedevkitchen\CmsSearch\Api\Data\ContentTypeInterface;
 
@@ -14,7 +15,7 @@ use Thedevkitchen\CmsSearch\Api\Data\ContentTypeInterface;
  * view label. One repository read per store view and request (the collection loads all labels in one query); a fresh
  * criteria builder per read, never a shared one.
  */
-class ContentTypeTabs
+class ContentTypeTabs implements ResetAfterRequestInterface
 {
     /** @var array<int, list<array{code: string, label: string}>> */
     private array $cache = [];
@@ -24,6 +25,11 @@ class ContentTypeTabs
         private readonly SearchCriteriaBuilderFactory $criteriaBuilderFactory,
         private readonly SortOrderBuilder $sortOrderBuilder
     ) {
+    }
+
+    public function _resetState(): void
+    {
+        $this->cache = [];
     }
 
     /**

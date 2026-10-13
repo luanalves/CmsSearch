@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\ViewModel;
 
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Magento\Framework\View\Element\Block\ArgumentInterface;
 use Thedevkitchen\CmsSearch\Model\Search\Data\Tab;
 use Thedevkitchen\CmsSearch\Model\Search\ResultUrl;
@@ -14,7 +15,7 @@ use Thedevkitchen\CmsSearch\Model\Search\SearchState;
  * documents of its whole branch (classification_ancestor_ids); terms without result in this tab are hidden; the
  * selected term can be cleared.
  */
-class ClassificationFilter implements ArgumentInterface
+class ClassificationFilter implements ArgumentInterface, ResetAfterRequestInterface
 {
     /** @var list<array<string, mixed>>|null */
     private ?array $nodes = null;
@@ -23,6 +24,11 @@ class ClassificationFilter implements ArgumentInterface
         private readonly SearchState $state,
         private readonly ResultUrl $url
     ) {
+    }
+
+    public function _resetState(): void
+    {
+        $this->nodes = null;
     }
 
     public function isVisible(): bool

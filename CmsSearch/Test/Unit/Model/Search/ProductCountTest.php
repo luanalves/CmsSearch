@@ -137,4 +137,18 @@ class ProductCountTest extends TestCase
         $this->assertTrue($class->getMethod('count')->isPublic());
         $this->assertFalse($class->getMethod('count')->isFinal());
     }
+
+    public function testTheNativeListingIsRenderedOnceHoweverOftenTheCountIsAsked(): void
+    {
+        $block = $this->createMock(Result::class);
+        $block->method('getData')->with('result_count')->willReturn(74);
+        $layout = $this->layout($block);
+        $layout->expects($this->once())->method('renderElement')->with(ProductCount::RESULT_BLOCK)->willReturn('<div></div>');
+        $counter = new ProductCount($this->layers, $this->logger);
+        $this->assertSame([74, 74], [$counter->count($layout, true), $counter->count($layout, true)]);
+        $counter->_resetState();
+        $other = $this->layout($block); // next request: another layout is counted again (its own single render)
+        $other->expects($this->once())->method('renderElement')->willReturn('<div></div>');
+        $this->assertSame(74, $counter->count($other, true));
+    }
 }
