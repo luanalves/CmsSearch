@@ -1,0 +1,19 @@
+<?php
+/**
+ * Wraps the native search result (moved here by the module layout) in the tab panel of the Products tab. Without a
+ * tab bar it prints the native children only, unchanged.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+/** @var \Thedevkitchen\CmsSearch\ViewModel\SearchTabs $viewModel */
+$viewModel = $block->getData('view_model');
+$children = $block->getChildHtml();
+if (!$viewModel->isVisible()) {
+    echo /* @noEscape */ $children;
+    return;
+}
+?>
+<div id="<?= $escaper->escapeHtmlAttr($viewModel->getPanelId()) ?>" class="cmssearch-panel" role="tabpanel" aria-labelledby="<?= $escaper->escapeHtmlAttr($viewModel->getActiveTabId()) ?>">
+    <?= /* @noEscape */ $children ?>
+</div>

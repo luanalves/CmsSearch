@@ -1,0 +1,28 @@
+<?php
+/**
+ * Tab bar of the search result page (CMS Search, spec 5.6). Tabs are links (each tab is a URL, D11) exposed as an
+ * ARIA tablist; the keyboard module adds roving tabindex and arrow keys.
+ *
+ * @var \Thedevkitchen\CmsSearch\Block\Result\Tabs $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+/** @var \Thedevkitchen\CmsSearch\ViewModel\SearchTabs $viewModel */
+$viewModel = $block->getData('view_model');
+if (!$viewModel->isVisible()) {
+    return;
+}
+$tabs = $viewModel->getTabs($block->getProductCount($viewModel->isProductsTabActive()));
+?>
+<div class="cmssearch-tabs">
+    <div class="cmssearch-tabs__list" role="tablist" aria-label="<?= $escaper->escapeHtmlAttr(__('Search results by type')) ?>" data-cmssearch-tablist>
+        <?php foreach ($tabs as $tab): ?>
+            <a href="<?= $escaper->escapeUrl($tab['url']) ?>" id="<?= $escaper->escapeHtmlAttr($tab['id']) ?>" class="cmssearch-tab<?= $tab['active'] ? ' cmssearch-tab--active' : '' ?>" role="tab" aria-selected="<?= $tab['active'] ? 'true' : 'false' ?>"<?php if ($tab['active']): ?> aria-controls="<?= $escaper->escapeHtmlAttr($viewModel->getPanelId()) ?>"<?php endif; ?> data-cmssearch-tab="<?= $escaper->escapeHtmlAttr($tab['code']) ?>"<?php if ($tab['count'] !== null): ?> data-count="<?= (int) $tab['count'] ?>"<?php endif; ?>>
+                <span class="cmssearch-tab__label"><?= $escaper->escapeHtml($tab['label']) ?></span>
+                <?php if ($tab['count'] !== null): ?>
+                    <span class="cmssearch-tab__count">(<?= (int) $tab['count'] ?>)</span>
+                <?php endif; ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+</div>
+<script type="text/x-magento-init">{"[data-cmssearch-tablist]": {"Thedevkitchen_CmsSearch/js/tabs": {}}}</script>
