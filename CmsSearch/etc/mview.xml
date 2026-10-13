@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Mview/etc/mview.xsd">
+    <!-- Plan 6 (spec 5.7, schedule mode): a change of the block text of a product page creates a changelog row of the
+         native catalogsearch_fulltext view; the cron indexer_update_all_views reindexes the product. -->
+    <view id="catalogsearch_fulltext" class="\Magento\CatalogSearch\Model\Indexer\Mview\Action" group="indexer">
+        <subscriptions>
+            <table name="thedevkitchen_cmssearch_product_block_text" entity_column="product_id"/>
+        </subscriptions>
+    </view>
+</config>

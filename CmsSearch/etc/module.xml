@@ -12,6 +12,15 @@
             <module name="Magento_MessageQueue"/>
             <module name="Magento_Amqp"/>
             <module name="Magento_Staging"/>
+            <module name="Magento_Catalog"/>
+            <module name="Magento_CatalogStaging"/>
+            <module name="Magento_CatalogSearch"/>
+            <module name="Magento_AdvancedSearch"/>
+            <module name="Magento_Elasticsearch"/>
+            <module name="Magento_ElasticsearchCatalogPermissions"/>
+            <module name="Magento_Widget"/>
+            <module name="Magento_Banner"/>
+            <module name="Magento_BannerCustomerSegment"/>
         </sequence>
     </module>
 </config>

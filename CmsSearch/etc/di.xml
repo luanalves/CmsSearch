@@ -174,4 +174,21 @@
             <argument name="logger" xsi:type="object">Thedevkitchen\CmsSearch\Model\Queue\Log\Logger</argument>
         </arguments>
     </type>
+    <!-- Plan 6: block text of product pages in the native product index. Typeless virtualTypes extend the vendor ones;
+         Magento_ElasticsearchCatalogPermissions replaces the first through a preference and redeclares the whole list,
+         so the item is registered in both. -->
+    <virtualType name="additionalFieldsProviderForElasticsearch">
+        <arguments>
+            <argument name="fieldsProviders" xsi:type="array">
+                <item name="thedevkitchen_cmssearch_block_text" xsi:type="object">Thedevkitchen\CmsSearch\Model\Indexer\ProductBlockTextProvider</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="categoryPermissionsAdditionalFieldsForElasticsearchDataMapper">
+        <arguments>
+            <argument name="fieldsProviders" xsi:type="array">
+                <item name="thedevkitchen_cmssearch_block_text" xsi:type="object">Thedevkitchen\CmsSearch\Model\Indexer\ProductBlockTextProvider</item>
+            </argument>
+        </arguments>
+    </virtualType>
 </config>

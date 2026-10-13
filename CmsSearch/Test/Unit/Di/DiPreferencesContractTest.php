@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Thedevkitchen\CmsSearch\Test\Unit\Di;
 
+use Magento\AdvancedSearch\Model\Adapter\DataMapper\AdditionalFieldsProviderInterface;
 use Magento\Staging\Model\StagingApplier\PostProcessorInterface;
 use Magento\Ui\DataProvider\Modifier\ModifierInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -16,6 +17,7 @@ use Thedevkitchen\CmsSearch\Model\ClassificationTermSearchResults;
 use Thedevkitchen\CmsSearch\Model\ContentTypeSearchResults;
 use Thedevkitchen\CmsSearch\Model\Indexer\DocumentBuilder;
 use Thedevkitchen\CmsSearch\Model\Indexer\FullReindexer;
+use Thedevkitchen\CmsSearch\Model\Indexer\ProductBlockTextProvider;
 use Thedevkitchen\CmsSearch\Model\Queue\MessageSender;
 use Thedevkitchen\CmsSearch\Model\Queue\PageReindexProcessor;
 use Thedevkitchen\CmsSearch\Model\Queue\ReindexHandler;
@@ -46,6 +48,12 @@ class DiPreferencesContractTest extends TestCase
         'Magento\\Framework\\Console\\CommandListInterface' => 'Magento\\Framework\\Console\\CommandList',
     ];
 
+    /** Vendor virtualTypes the module extends with a typeless <virtualType name="..."> (DOM merge keeps their type). */
+    private const EXTENDED_VIRTUAL_TYPES = [
+        'additionalFieldsProviderForElasticsearch' => 'Magento\\AdvancedSearch\\Model\\Adapter\\DataMapper\\AdditionalFieldsProvider',
+        'categoryPermissionsAdditionalFieldsForElasticsearchDataMapper' => 'Magento\\AdvancedSearch\\Model\\Adapter\\DataMapper\\AdditionalFieldsProvider',
+    ];
+
     /** @return array<string, array{0: string}> */
     public static function files(): array
     {
@@ -72,7 +80,9 @@ class DiPreferencesContractTest extends TestCase
         $virtual = [];
         foreach (self::files() as [$file]) {
             foreach ($this->di($file)->xpath('//virtualType') as $vt) {
-                $virtual[ltrim((string) $vt['name'], '\\')] = ltrim((string) $vt['type'], '\\');
+                $name = ltrim((string) $vt['name'], '\\');
+                $type = ltrim((string) $vt['type'], '\\');
+                $virtual[$name] = $type !== '' ? $type : (self::EXTENDED_VIRTUAL_TYPES[$name] ?? '');
             }
         }
         return $virtual;
@@ -113,6 +123,9 @@ class DiPreferencesContractTest extends TestCase
         $this->assertNotEmpty($nodes);
         foreach ($nodes as $node) {
             $class = ltrim((string) ($node->getName() === 'type' ? $node['name'] : $node['type']), '\\');
+            if ($node->getName() === 'virtualType' && $class === '') {
+                $class = self::EXTENDED_VIRTUAL_TYPES[ltrim((string) $node['name'], '\\')] ?? ''; // only listed vendor virtualTypes may be typeless
+            }
             $this->assertTrue($this->exists($class), "class not found: $class");
         }
     }
@@ -326,6 +339,47 @@ class DiPreferencesContractTest extends TestCase
         $this->assertSame('object', (string) $items[0]->attributes('xsi', true)->type);
         $this->assertSame(PageVersionApplied::class, ltrim((string) $items[0], '\\'));
         $this->assertTrue(is_a(PageVersionApplied::class, PostProcessorInterface::class, true));
+    }
+
+    /**
+     * Plan 6 Task 11: Magento_ElasticsearchCatalogPermissions replaces additionalFieldsProviderForElasticsearch by
+     * categoryPermissionsAdditionalFieldsForElasticsearchDataMapper (preference) and redeclares the whole list, so the
+     * block text provider is added to BOTH lists, each with a typeless node that keeps the vendor type.
+     */
+    public function testTheProductBlockTextProviderExtendsBothNativeFieldProviderLists(): void
+    {
+        foreach (array_keys(self::EXTENDED_VIRTUAL_TYPES) as $name) {
+            $nodes = $this->di('etc/di.xml')->xpath('//virtualType[@name="' . $name . '"]');
+            $this->assertCount(1, $nodes, $name);
+            $this->assertSame('', (string) $nodes[0]['type'], "$name: typeless, so the vendor type is kept");
+            $items = $nodes[0]->xpath('arguments/argument[@name="fieldsProviders"]/item');
+            $this->assertCount(1, $items, $name);
+            $this->assertSame('thedevkitchen_cmssearch_block_text', (string) $items[0]['name']);
+            $this->assertSame('object', (string) $items[0]->attributes('xsi', true)->type);
+            $this->assertSame(ProductBlockTextProvider::class, ltrim((string) $items[0], '\\'));
+        }
+        foreach (['etc/adminhtml/di.xml', 'etc/frontend/di.xml'] as $file) {
+            $this->assertSame([], $this->di($file)->xpath('//virtualType[@name="additionalFieldsProviderForElasticsearch" or @name="categoryPermissionsAdditionalFieldsForElasticsearchDataMapper"]'), $file);
+        }
+        $this->assertTrue(is_a(ProductBlockTextProvider::class, AdditionalFieldsProviderInterface::class, true));
+    }
+
+    /** The vendor declarations the typeless nodes rely on: names, base type and the replacing preference. */
+    public function testTheExtendedVendorVirtualTypesExistWithTheExpectedWiring(): void
+    {
+        $root = dirname(__DIR__, 7) . '/vendor/magento';
+        $base = simplexml_load_file($root . '/module-elasticsearch/etc/di.xml')
+            ->xpath('//virtualType[@name="additionalFieldsProviderForElasticsearch"]');
+        $this->assertCount(1, $base);
+        $this->assertSame(self::EXTENDED_VIRTUAL_TYPES['additionalFieldsProviderForElasticsearch'], ltrim((string) $base[0]['type'], '\\'));
+        $permissions = simplexml_load_file($root . '/module-elasticsearch-catalog-permissions/etc/di.xml');
+        $this->assertSame(
+            ['categoryPermissionsAdditionalFieldsForElasticsearchDataMapper'],
+            array_map('strval', $permissions->xpath('//preference[@for="additionalFieldsProviderForElasticsearch"]/@type'))
+        );
+        $replacement = $permissions->xpath('//virtualType[@name="categoryPermissionsAdditionalFieldsForElasticsearchDataMapper"]');
+        $this->assertCount(1, $replacement);
+        $this->assertSame('additionalFieldsProviderForElasticsearch', ltrim((string) $replacement[0]['type'], '\\'));
     }
 
     public function testInterfaceTypesResolveToTheirImplementation(): void

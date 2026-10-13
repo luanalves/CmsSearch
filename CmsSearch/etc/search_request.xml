@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<requests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="urn:magento:framework:Search/etc/search_request.xsd">
+    <!-- Plan 6 (spec 5.7, TS-49): the storefront quick search matches only the searchable attribute fields (no "*" /
+         _search match in 2.4.8), so the block text field of the native product document is added to its full-text
+         "search" match query (merged by field name; default boost). -->
+    <request query="quick_search_container" index="catalogsearch_fulltext">
+        <queries>
+            <query xsi:type="matchQuery" value="$search_term$" name="search">
+                <match field="cmssearch_block_text"/>
+            </query>
+        </queries>
+    </request>
+</requests>
