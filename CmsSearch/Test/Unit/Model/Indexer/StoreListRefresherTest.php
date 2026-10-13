@@ -9,6 +9,7 @@ use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Thedevkitchen\CmsSearch\Model\Indexer\StoreListRefresher;
+use Thedevkitchen\CmsSearch\Test\Unit\Support\ArrayCache;
 use Thedevkitchen\CmsSearch\Test\Unit\Support\DbStubTrait;
 use Thedevkitchen\CmsSearch\Test\Unit\Support\RecordingLogger;
 
@@ -45,6 +46,7 @@ class StoreListRefresherTest extends TestCase
     }
 
     private RecordingLogger $logger;
+    private ArrayCache $cache;
 
     /**
      * @param list<list<array<string, string>>> $reads rows of each database read, in call order
@@ -56,7 +58,8 @@ class StoreListRefresherTest extends TestCase
         $manager->method('getStores')->with(false)->willReturn($memory);
         $manager->expects($this->exactly($reinits))->method('reinitStores');
         $this->logger = new RecordingLogger();
-        return new StoreListRefresher($this->db($reads), $manager, $this->logger);
+        $this->cache ??= new ArrayCache();
+        return new StoreListRefresher($this->db($reads), $manager, $this->logger, $this->cache);
     }
 
     /** @return array<string, array{0: int, 1: int, 2: int, 3: int, 4: int}> */
@@ -107,6 +110,85 @@ class StoreListRefresherTest extends TestCase
         $this->assertCount(2, array_filter($this->logger->records, static fn (array $r): bool => $r[0] === 'warning'));
     }
 
+    private static function fingerprint(array $rows): string
+    {
+        return hash('sha256', implode("\n", array_map(
+            static fn (array $r): string => implode('|', [$r['store_id'], $r['code'], $r['website_id'], $r['group_id'], $r['is_active'], $r['root_category_id']]),
+            $rows
+        )));
+    }
+
+    public function testAFreshProcessWithTheCachedFingerprintOfTheDatabaseDoesNotReinitialiseEvenIfMemoryDiffers(): void
+    {
+        $rows = [self::row(1, 'default', 1, 1, 1, 2), self::row(8, 'new', 2, 2, 1, 103)];
+        $this->cache = new ArrayCache();
+        $this->cache->data[StoreListRefresher::FINGERPRINT_KEY] = self::fingerprint($rows);
+        $refresher = $this->refresherOver([$rows, $rows], [1 => $this->store(1, 'default', 1, 1, 1, 2)], 0);
+        $this->assertFalse($refresher->refreshIfChanged());
+        $this->assertFalse($refresher->refreshIfChanged());
+        $this->assertSame([], $this->logger->records);
+        $this->assertSame([], $this->cache->saves);
+    }
+
+    public function testAFreshProcessWhenTheDatabaseDiffersFromTheCachedFingerprintReinitialisesOnceAndSaves(): void
+    {
+        $old = [self::row(1, 'default', 1, 1, 1, 2)];
+        $rows = [self::row(1, 'default', 1, 1, 1, 2), self::row(8, 'new', 2, 2, 1, 103)];
+        $this->cache = new ArrayCache();
+        $this->cache->data[StoreListRefresher::FINGERPRINT_KEY] = self::fingerprint($old);
+        $refresher = $this->refresherOver([$rows, $rows], [1 => $this->store(1, 'default', 1, 1, 1, 2)], 1);
+        $this->assertTrue($refresher->refreshIfChanged());
+        $this->assertFalse($refresher->refreshIfChanged());
+        $this->assertSame(self::fingerprint($rows), $this->cache->data[StoreListRefresher::FINGERPRINT_KEY]);
+        $this->assertSame([[StoreListRefresher::FINGERPRINT_KEY, [], null]], $this->cache->saves);
+        $this->assertCount(1, $this->logger->records);
+    }
+
+    public function testASecondProcessAfterTheFirstOneHandledADumpedScopesStateStaysQuiet(): void
+    {
+        $rows = [self::row(1, 'default', 1, 1, 1, 2), self::row(8, 'new', 2, 2, 1, 103)];
+        $memory = [1 => $this->store(1, 'default', 1, 1, 1, 2)];
+        $this->cache = new ArrayCache();
+        $first = $this->refresherOver([$rows], $memory, 1);
+        $this->assertTrue($first->refreshIfChanged());
+        $warnings = count($this->logger->records);
+        $second = $this->refresherOver([$rows, $rows], $memory, 0);
+        $this->assertFalse($second->refreshIfChanged());
+        $this->assertFalse($second->refreshIfChanged());
+        $this->assertSame(1, $warnings);
+        $this->assertSame([], $this->logger->records);
+    }
+
+    public function testWithoutACacheEntryAndMemoryEqualToTheDatabaseTheFingerprintIsSavedWithoutReinit(): void
+    {
+        $rows = [self::row(1, 'default', 1, 1, 1, 2)];
+        $this->cache = new ArrayCache();
+        $refresher = $this->refresherOver([$rows], [1 => $this->store(1, 'default', 1, 1, 1, 2)], 0);
+        $this->assertFalse($refresher->refreshIfChanged());
+        $this->assertSame(self::fingerprint($rows), $this->cache->data[StoreListRefresher::FINGERPRINT_KEY]);
+    }
+
+    public function testADatabaseChangeInsideAProcessReinitialisesEvenIfAnotherProcessCachedIt(): void
+    {
+        $a = [self::row(1, 'default', 1, 1, 1, 2)];
+        $b = [self::row(1, 'default', 1, 1, 1, 2), self::row(8, 'new', 2, 2, 1, 103)];
+        $this->cache = new ArrayCache();
+        $refresher = $this->refresherOver([$a, $b], [1 => $this->store(1, 'default', 1, 1, 1, 2)], 1);
+        $this->assertFalse($refresher->refreshIfChanged());
+        $this->cache->data[StoreListRefresher::FINGERPRINT_KEY] = self::fingerprint($b);   // a peer handled it
+        $this->assertTrue($refresher->refreshIfChanged());   // this process memory is still stale: reinit, no second warning
+        $this->assertSame([], $this->logger->records);
+    }
+
+    public function testACacheFailureNeverThrowsAndFallsBackToMemory(): void
+    {
+        $rows = [self::row(1, 'default', 1, 1, 1, 2), self::row(8, 'new', 2, 2, 1, 103)];
+        $this->cache = new ArrayCache(true);
+        $refresher = $this->refresherOver([$rows, $rows], [1 => $this->store(1, 'default', 1, 1, 1, 2)], 1);
+        $this->assertTrue($refresher->refreshIfChanged());
+        $this->assertFalse($refresher->refreshIfChanged());
+    }
+
     public function testNoWarningWhenTheReinitialisationConverges(): void
     {
         $rows = [self::row(1, 'default', 1, 1, 1, 2), self::row(8, 'new', 2, 2, 1, 103)];
@@ -121,7 +203,7 @@ class StoreListRefresherTest extends TestCase
             $current = $new;
         });
         $this->logger = new RecordingLogger();
-        $refresher = new StoreListRefresher($this->db([$rows, $rows]), $manager, $this->logger);
+        $refresher = new StoreListRefresher($this->db([$rows, $rows]), $manager, $this->logger, new ArrayCache());
         $this->assertTrue($refresher->refreshIfChanged());
         $this->assertFalse($refresher->refreshIfChanged());
         $this->assertSame([], $this->logger->records);
