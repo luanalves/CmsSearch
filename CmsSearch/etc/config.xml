@@ -3,6 +3,19 @@
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <thedevkitchen_cmssearch>
+            <general>
+                <enabled>1</enabled>
+            </general>
+            <tabs>
+                <products_label/>
+                <categories_label/>
+            </tabs>
+            <results>
+                <page_size>12</page_size>
+                <summary_length>200</summary_length>
+                <!-- operator setting (bin/magento config:set), no form field: CMS search request timeout in ms -->
+                <search_timeout_ms>1500</search_timeout_ms>
+            </results>
             <queue>
                 <max_attempts>3</max_attempts>
             </queue>

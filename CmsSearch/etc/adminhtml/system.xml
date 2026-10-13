@@ -6,10 +6,51 @@
             <label>Thedevkitchen</label>
         </tab>
         <section id="thedevkitchen_cmssearch" translate="label" sortOrder="10"
-                 showInDefault="1" showInWebsite="0" showInStore="0">
+                 showInDefault="1" showInWebsite="1" showInStore="1">
             <label>CMS Search</label>
             <tab>thedevkitchen</tab>
             <resource>Thedevkitchen_CmsSearch::config</resource>
+            <group id="general" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Search Result Page</label>
+                <field id="enabled" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Show CMS Tabs</label>
+                    <comment>No: the search result page is the native one (no tab bar, no CMS results). Indexing is not affected.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+            </group>
+            <group id="tabs" translate="label" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Fixed Tabs</label>
+                <field id="products_label" translate="label comment" type="text" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Products Tab Label</label>
+                    <comment>Empty: the translated name "Products".</comment>
+                    <validate>validate-length maximum-length-64</validate>
+                </field>
+                <field id="categories_label" translate="label comment" type="text" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Categories Tab Label</label>
+                    <comment>Empty: the translated name "Categories". The tab appears only when category documents are indexed.</comment>
+                    <validate>validate-length maximum-length-64</validate>
+                </field>
+            </group>
+            <group id="results" translate="label" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>CMS Results</label>
+                <field id="page_size" translate="label comment" type="text" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Results per Page</label>
+                    <comment>Cards per page on the CMS tabs. Whole number from 1 to 60; default 12.</comment>
+                    <validate>required-entry validate-digits validate-digits-range digits-range-1-60</validate>
+                    <backend_model>Thedevkitchen\CmsSearch\Model\Config\Backend\PageSize</backend_model>
+                </field>
+                <field id="summary_length" translate="label comment" type="text" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Summary Length</label>
+                    <comment>Characters of the card summary, cut at a word boundary. Whole number from 50 to 1000; default 200.</comment>
+                    <validate>required-entry validate-digits validate-digits-range digits-range-50-1000</validate>
+                    <backend_model>Thedevkitchen\CmsSearch\Model\Config\Backend\SummaryLength</backend_model>
+                </field>
+            </group>
             <group id="queue" translate="label comment" sortOrder="40" showInDefault="1" showInWebsite="0" showInStore="0">
                 <label>Reindex Queue</label>
                 <comment>Messages wait in the RabbitMQ queue thedevkitchen.cmssearch.reindex until the consumer of the same name processes them (asynchronous; no refresh interval is imposed).</comment>
