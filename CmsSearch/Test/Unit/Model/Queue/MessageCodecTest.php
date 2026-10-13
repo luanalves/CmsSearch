@@ -108,4 +108,24 @@ class MessageCodecTest extends TestCase
         $this->expectExceptionMessage($message);
         (new MessageCodec())->decode($body);
     }
+
+    /** @return array<string, array{0: string, 1: int, 2: string}> */
+    public static function plan6Messages(): array
+    {
+        return [
+            'block' => ['block', 32767, 'staging'],
+            'dynamic block' => ['dynamic_block', 4294967295, 'save'],
+            'widget instance' => ['widget_instance', 18, 'delete'],
+            'product' => ['product', 2048, 'staging'],
+            'category' => ['category', 103, 'save'],
+        ];
+    }
+
+    #[DataProvider('plan6Messages')]
+    public function testEveryPlan6EntityTypeSurvivesTheWireFormat(string $type, int $id, string $action): void
+    {
+        $codec = new MessageCodec();
+        $message = new ReindexMessage($type, $id, $action, 1760000000, 7, null, 1);
+        $this->assertSame($message->toArray(), $codec->decode($codec->encode($message))->toArray());
+    }
 }

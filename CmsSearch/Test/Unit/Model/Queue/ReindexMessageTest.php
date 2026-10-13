@@ -67,7 +67,7 @@ class ReindexMessageTest extends TestCase
                 $count++;
             }
         }
-        $this->assertSame(7, $count);
+        $this->assertSame(20, $count);
     }
 
     /** @return array<string, array{0: array<int, mixed>, 1: string}> */
@@ -96,6 +96,11 @@ class ReindexMessageTest extends TestCase
             'website PHP_INT_MAX' => [['page', 1, 'save', 1, null, PHP_INT_MAX], 'website id must be'],
             'negative attempt' => [['page', 1, 'save', 1, null, null, -1], 'attempt must be between 0 and 100'],
             'attempt above the bound' => [['page', 1, 'save', 1, null, null, 101], 'attempt must be between 0 and 100'],
+            'block id above the block cap' => [['block', 32768, 'save', 1], 'at most 32767'],
+            'staging is not valid for dynamic blocks' => [['dynamic_block', 1, 'staging', 1], 'not valid for entity type'],
+            'staging is not valid for widget instances' => [['widget_instance', 1, 'staging', 1], 'not valid for entity type'],
+            'product id above the general cap' => [['product', 4294967296, 'save', 1], 'at most 4294967295'],
+            'category id zero' => [['category', 0, 'delete', 1], 'entity id must be a positive integer'],
         ];
     }
 
@@ -128,6 +133,42 @@ class ReindexMessageTest extends TestCase
         $this->expectException(InvalidReindexMessageException::class);
         $this->expectExceptionMessage($message);
         new ReindexMessage(...$arguments);
+    }
+
+    public function testThePlan6EntityTypesAndTheirActions(): void
+    {
+        $this->assertSame([
+            'page' => ['save', 'delete', 'staging'],
+            'content_type' => ['save', 'delete'],
+            'classification_term' => ['save', 'delete'],
+            'block' => ['save', 'delete', 'staging'],
+            'dynamic_block' => ['save', 'delete'],
+            'widget_instance' => ['save', 'delete'],
+            'product' => ['save', 'delete', 'staging'],
+            'category' => ['save', 'delete', 'staging'],
+        ], Message::ALLOWED_ACTIONS);
+        $this->assertSame(
+            ['block', 'dynamic_block', 'widget_instance', 'product', 'category'],
+            [Message::ENTITY_BLOCK, Message::ENTITY_DYNAMIC_BLOCK, Message::ENTITY_WIDGET_INSTANCE, Message::ENTITY_PRODUCT, Message::ENTITY_CATEGORY]
+        );
+    }
+
+    public function testTheUpperBoundsOfThePlan6TypesAreAccepted(): void
+    {
+        $this->assertSame(32767, ReindexMessage::MAX_BLOCK_ID);
+        $this->assertSame(32767, (new ReindexMessage('block', 32767, 'staging', 1))->getEntityId());
+        foreach (['dynamic_block', 'widget_instance', 'product', 'category'] as $type) {
+            $this->assertSame(4294967295, (new ReindexMessage($type, 4294967295, 'delete', 1, 65535))->getEntityId(), $type);
+        }
+    }
+
+    public function testTheKeyDiffersPerEntityType(): void
+    {
+        $keys = [];
+        foreach (['block', 'dynamic_block', 'widget_instance', 'product', 'category'] as $type) {
+            $keys[] = (new ReindexMessage($type, 5, 'save', 1))->getKey();
+        }
+        $this->assertCount(5, array_unique($keys));
     }
 
     public function testTheExceptionIsOneTheFrameworkConsumerRejectsToTheDlq(): void

@@ -21,6 +21,9 @@ final class ReindexMessage implements ReindexMessageInterface
     /** Upper bound of a page id: page_id is a signed smallint (FK to sequence_cms_page). */
     public const MAX_PAGE_ID = 32767;
 
+    /** Upper bound of a CMS block id: cms_block.block_id is a signed smallint. */
+    public const MAX_BLOCK_ID = 32767;
+
     /** Upper bound of store_id and website_id (smallint unsigned range). */
     public const MAX_SCOPE_ID = 65535;
 
@@ -55,7 +58,11 @@ final class ReindexMessage implements ReindexMessageInterface
                 self::quote($entityType)
             ));
         }
-        $maxId = $entityType === self::ENTITY_PAGE ? self::MAX_PAGE_ID : self::MAX_ENTITY_ID;
+        $maxId = match ($entityType) {
+            self::ENTITY_PAGE => self::MAX_PAGE_ID,
+            self::ENTITY_BLOCK => self::MAX_BLOCK_ID,
+            default => self::MAX_ENTITY_ID,
+        };
         if ($entityId <= 0 || $entityId > $maxId) {
             throw new InvalidReindexMessageException(
                 sprintf('The entity id must be a positive integer of at most %d.', $maxId)

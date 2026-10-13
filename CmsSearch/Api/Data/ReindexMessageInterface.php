@@ -17,6 +17,16 @@ interface ReindexMessageInterface
     public const ENTITY_PAGE = 'page';
     public const ENTITY_CONTENT_TYPE = 'content_type';
     public const ENTITY_CLASSIFICATION_TERM = 'classification_term';
+    /** CMS block (block_id <= 32767): the consumer reindexes every host that publishes it (Plan 6). */
+    public const ENTITY_BLOCK = 'block';
+    /** Dynamic Block (magento_banner.banner_id). */
+    public const ENTITY_DYNAMIC_BLOCK = 'dynamic_block';
+    /** Widget instance (widget_instance.instance_id): hosts of its old and new placement. */
+    public const ENTITY_WIDGET_INSTANCE = 'widget_instance';
+    /** Product (entity_id): its block text for the native product index. */
+    public const ENTITY_PRODUCT = 'product';
+    /** Category (entity_id): its category document. */
+    public const ENTITY_CATEGORY = 'category';
 
     public const ACTION_SAVE = 'save';
     public const ACTION_DELETE = 'delete';
@@ -24,12 +34,18 @@ interface ReindexMessageInterface
 
     /**
      * Entity type => accepted actions. A classification_term "save" means "the term or its place in the tree
-     * changed": the consumer reindexes the pages of the term's CURRENT subtree. Plan 6 adds block/product/category.
+     * changed": the consumer reindexes the pages of the term's CURRENT subtree. "staging" = a scheduled version
+     * started or ended (StagingApplier post-processors); Dynamic Blocks and widget instances are not staged.
      */
     public const ALLOWED_ACTIONS = [
         self::ENTITY_PAGE => [self::ACTION_SAVE, self::ACTION_DELETE, self::ACTION_STAGING],
         self::ENTITY_CONTENT_TYPE => [self::ACTION_SAVE, self::ACTION_DELETE],
         self::ENTITY_CLASSIFICATION_TERM => [self::ACTION_SAVE, self::ACTION_DELETE],
+        self::ENTITY_BLOCK => [self::ACTION_SAVE, self::ACTION_DELETE, self::ACTION_STAGING],
+        self::ENTITY_DYNAMIC_BLOCK => [self::ACTION_SAVE, self::ACTION_DELETE],
+        self::ENTITY_WIDGET_INSTANCE => [self::ACTION_SAVE, self::ACTION_DELETE],
+        self::ENTITY_PRODUCT => [self::ACTION_SAVE, self::ACTION_DELETE, self::ACTION_STAGING],
+        self::ENTITY_CATEGORY => [self::ACTION_SAVE, self::ACTION_DELETE, self::ACTION_STAGING],
     ];
 
     public function getEntityType(): string;
