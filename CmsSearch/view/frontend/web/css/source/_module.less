@@ -9,8 +9,23 @@
 @cmssearch__muted-color: @color-gray34;
 @cmssearch__border-color: @color-gray80;
 @cmssearch__accent-color: @primary__color;
+// The module paints its own surface: the dark grey text above is only readable on a light background and the themes
+// set @page__background-color / @sidebar__background-color freely (Local/gaming is dark: #12002A / #1a0040).
+@cmssearch__background-color: @color-white;
 
 & when (@media-common = true) {
+    .cmssearch-tabs,
+    .cmssearch-results,
+    .cmssearch-filter {
+        background-color: @cmssearch__background-color;
+        color: @cmssearch__text-color;
+    }
+
+    .cmssearch-results,
+    .cmssearch-filter {
+        padding: @indent__base;
+    }
+
     .cmssearch-tabs {
         margin: 0 0 @indent__m;
         border-bottom: 1px solid @cmssearch__border-color;
@@ -212,5 +227,13 @@
 
     .cmssearch-card__image {
         max-width: 100%;
+    }
+}
+
+// Luma pads `.page-products .columns` by 60px below 768px for the toolbar of the native listing; the CMS tabs have no
+// toolbar, so the padding would leave an empty band above the tab bar (the Products tab keeps it).
+.media-width(@extremum, @break) when (@extremum = 'max') and (@break = @screen__m) {
+    .cmssearch-cms-tab.page-products .columns {
+        padding-top: 0;
     }
 }
