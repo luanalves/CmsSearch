@@ -133,3 +133,55 @@ If the main queue already holds messages, the suites that purge queues refuse to
 - Demo data and Cypress evidence screenshots (searches for "milho" and "espinafre", admin screens): [docs/evidence/cms-search-demo/](../../../../docs/evidence/cms-search-demo/README.md).
 
 How it is built, decisions, runbook, known limits and release notes: [TECHNICAL-REFERENCE.md](TECHNICAL-REFERENCE.md).
+
+## Development effort and cost
+
+This module was built with Claude Code between 2026-10-10 and 2026-10-13. The figures below come from the LangWatch traces of the coding sessions (read with the `langwatch` CLI on 2026-10-13) and from `git`. LangWatch computes the cost from token usage, so it is an estimate and not an invoice.
+
+**Usage recorded by LangWatch (461 traces, 35 sessions)**
+
+| Item | Value |
+|---|---|
+| Estimated cost | US$ 248.32 |
+| Output tokens | 4.44 M |
+| Input tokens (not cached) | 0.37 M |
+| Cache read / cache creation tokens | 556.8 M / 20.4 M |
+| Execution time summed over traces | about 22.5 hours |
+| Models (traces) | Sonnet 5.5: 420, Haiku 5.5: 78, Opus 5.5: 21 |
+| Traces flagged with an error | 62 (not investigated) |
+
+| Day | Traces | Estimated cost |
+|---|---|---|
+| 2026-10-10 | 42 | US$ 2.85 |
+| 2026-10-11 | 185 | US$ 22.54 |
+| 2026-10-12 | 182 | US$ 163.41 |
+| 2026-10-13 | 52 | US$ 59.51 |
+
+One long session (the one that built this module, about 46 hours of wall clock) holds 81 traces and US$ 199.82, which is 80% of the cost. The other 34 sessions add up to US$ 48.50. It is not known whether subagent usage is counted inside that session or in separate ones, so read US$ 199.82 as what was recorded for it, not as a guaranteed total for the module. Most tokens were cache reads, which is expected when one session orchestrates many subagents.
+
+**What was delivered (git, branch `feature/cms-search-content-type-registry`, not merged)**
+
+- 146 commits (82 on 2026-10-12, 64 on 2026-10-13); 32 of them are fixes found by the review steps.
+- In `app/code/Thedevkitchen`: 397 files and about 37.9 thousand lines, of which 158 files are tests.
+- 7 implementation plans executed in `docs/superpowers/plans`.
+- About 1,650 PHPUnit tests, 6 real-environment bash suites and 6 Cypress specs, all passing at the last full run.
+- This documentation, the technical reference, the release notes and the Cypress evidence in `docs/evidence/cms-search-demo/`.
+
+**Time saved against the original estimate**
+
+The plans estimated 27 to 38 person-days (216 to 304 hours at 8 hours per day) for this scope. Compared with the real time:
+
+| Real time used | Saved vs 27 days | Saved vs 38 days |
+|---|---|---|
+| About 22.5 hours of execution time summed over the traces | 90% | 93% |
+| 2 calendar days with commits (2026-10-12 and 2026-10-13) | 93% | 95% |
+| 3 calendar days, first to last trace (2026-10-10 to 2026-10-13) | 89% | 92% |
+
+In short, about 90% less time than the original estimate (89% to 95% depending on the base).
+
+**Limits of this comparison**
+
+- The 27 to 38 day estimate was written by the same tooling before the work started, not by an independent team, so it may be too high or too low.
+- The real time does not include the product owner's time for decisions and review, which does not appear in the traces.
+- It does not include future rework (the open product decisions) or the human review of the pull request.
+- The cost of the same work by a human team and the quality difference were not measured, so this is an order-of-magnitude comparison.
